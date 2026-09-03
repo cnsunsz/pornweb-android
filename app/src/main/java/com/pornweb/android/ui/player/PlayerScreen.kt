@@ -4,28 +4,46 @@ import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.view.WindowManager
 import android.widget.FrameLayout
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -35,6 +53,7 @@ import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.pornweb.android.PornWebApp
 import com.pornweb.android.data.ExtraFile
@@ -138,6 +157,13 @@ private fun PlayerBody(
             }
     }
 
+    var controlsVisible by remember { mutableStateOf(true) }
+    var playing by remember { mutableStateOf(true) }
+    var durationMs by remember { mutableLongStateOf(0L) }
+    var positionMs by remember { mutableLongStateOf(0L) }
+    var seeking by remember { mutableStateOf(false) }
+    var seekValue by remember { mutableFloatStateOf(0f) }
+
     DisposableEffect(player) {
         onDispose {
             saveProgress(c, id, part, player)
@@ -162,6 +188,7 @@ private fun PlayerBody(
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                playing = isPlaying
                 if (!isPlaying) saveProgress(c, id, part, player)
             }
         }
@@ -176,16 +203,35 @@ private fun PlayerBody(
         }
     }
 
+    LaunchedEffect(player) {
+        while (isActive) {
+            val dur = player.duration
+            durationMs = if (dur > 0) dur else 0L
+            if (!seeking) {
+                positionMs = player.currentPosition.coerceAtLeast(0)
+            }
+            playing = player.isPlaying
+            delay(200)
+        }
+    }
+
+    LaunchedEffect(controlsVisible, playing) {
+        if (controlsVisible && playing) {
+            delay(4_000)
+            controlsVisible = false
+        }
+    }
+
+    val durationForSlider = durationMs.coerceAtLeast(1L).toFloat()
+    val sliderPos = if (seeking) seekValue else positionMs.toFloat().coerceIn(0f, durationForSlider)
+
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
-                    useController = true
+                    useController = false
                     this.player = player
-                    setShowNextButton(false)
-                    setShowPreviousButton(false)
-                    setShowFastForwardButton(true)
-                    setShowRewindButton(true)
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     keepScreenOn = true
                     layoutParams = FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT,
@@ -196,33 +242,115 @@ private fun PlayerBody(
             update = { it.player = player },
             modifier = Modifier.fillMaxSize()
         )
-        if (title.isNotBlank()) {
-            Text(
-                title,
-                color = Color.White,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(16.dp)
-            )
-        }
-        if (extras.size > 1) {
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(12.dp)
-            ) {
-                extras.forEachIndexed { i, extra ->
-                    FilterChip(
-                        selected = part == i,
-                        onClick = { onPart(i) },
-                        label = { Text(extra.label ?: "${i + 1}") },
-                        modifier = Modifier.padding(start = 4.dp)
+        Box(
+            Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTapGestures {
+                        controlsVisible = !controlsVisible
+                    }
+                }
+        )
+        AnimatedVisibility(
+            visible = controlsVisible,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent))
+                        )
+                        .statusBarsPadding()
+                        .padding(horizontal = 4.dp, vertical = 4.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Color.White)
+                        }
+                        Text(
+                            title,
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 2,
+                            modifier = Modifier.padding(end = 12.dp).weight(1f)
+                        )
+                    }
+                    if (extras.size > 1) {
+                        Row(modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)) {
+                            extras.forEachIndexed { i, extra ->
+                                FilterChip(
+                                    selected = part == i,
+                                    onClick = { onPart(i) },
+                                    label = { Text(extra.label ?: "${i + 1}") },
+                                    modifier = Modifier.padding(start = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f)))
+                        )
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    Slider(
+                        value = sliderPos,
+                        onValueChange = { v ->
+                            seeking = true
+                            controlsVisible = true
+                            seekValue = v
+                        },
+                        onValueChangeFinished = {
+                            player.seekTo(seekValue.toLong().coerceAtLeast(0))
+                            positionMs = seekValue.toLong()
+                            seeking = false
+                        },
+                        valueRange = 0f..durationForSlider,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color.White,
+                            activeTrackColor = Color(0xFF22D3EE),
+                            inactiveTrackColor = Color.White.copy(alpha = 0.35f)
+                        )
                     )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(formatTime(if (seeking) seekValue.toLong() else positionMs), color = Color.White)
+                        IconButton(onClick = {
+                            if (player.isPlaying) player.pause() else player.play()
+                            controlsVisible = true
+                        }) {
+                            Icon(
+                                if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (playing) "暂停" else "播放",
+                                tint = Color.White
+                            )
+                        }
+                        Text(formatTime(durationMs), color = Color.White)
+                    }
                 }
             }
         }
     }
+}
+
+private fun formatTime(ms: Long): String {
+    if (ms <= 0) return "00:00"
+    val total = (ms / 1000).toInt()
+    val h = total / 3600
+    val m = (total % 3600) / 60
+    val s = total % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
 }
 
 private fun saveProgress(

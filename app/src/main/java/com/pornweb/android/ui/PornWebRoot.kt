@@ -85,10 +85,21 @@ fun PornWebRoot() {
                         NavigationBarItem(
                             selected = if (tab.route == "library") current?.startsWith("library") == true else current == tab.route,
                             onClick = {
-                                nav.navigate(tab.route) {
-                                    popUpTo("home") { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
+                                if (tab.route == "home") {
+                                    // library?folder=... sits on top of home; launchSingleTop
+                                    // to "home" is a no-op and the Home tab appears dead.
+                                    if (current != "home") {
+                                        if (!nav.popBackStack("home", inclusive = false)) {
+                                            nav.navigate("home") { launchSingleTop = true }
+                                        }
+                                    }
+                                } else {
+                                    val dest = if (tab.route == "library") "library?folder=" else tab.route
+                                    nav.navigate(dest) {
+                                        popUpTo("home") { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = tab.route != "library"
+                                    }
                                 }
                             },
                             icon = { Icon(tab.icon, contentDescription = tab.label) },
