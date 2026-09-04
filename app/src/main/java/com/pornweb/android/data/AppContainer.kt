@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit
 class AppContainer(context: Context) {
     val serverStore = ServerStore(context)
     val tokenStore = TokenStore(context)
+    val playerPrefs = PlayerPrefs(context)
     val gson: Gson = GsonBuilder().serializeNulls().create()
 
     private val _unauthorized = MutableSharedFlow<Unit>(extraBufferCapacity = 1)

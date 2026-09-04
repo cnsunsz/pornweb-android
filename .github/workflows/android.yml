@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -39,7 +41,7 @@ jobs:
             echo "$SIGNING_STORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
             echo "SIGNING_STORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
           else
-            echo "No release keystore secret; release APK will be debug-signed."
+            echo "Using repo keystore/pornweb.jks for signing."
           fi
 
       - name: Build debug APK
@@ -60,6 +62,7 @@ jobs:
           else
             VER="${GITHUB_SHA::7}"
           fi
+          echo "APP_VER=$VER" >> "$GITHUB_ENV"
           cp app/build/outputs/apk/debug/app-debug.apk "dist/PornWeb-${VER}-debug.apk"
           if [[ -f app/build/outputs/apk/release/app-release.apk ]]; then
             cp app/build/outputs/apk/release/app-release.apk "dist/PornWeb-${VER}-release.apk"
@@ -73,12 +76,33 @@ jobs:
           path: dist/*.apk
           if-no-files-found: error
 
+      - name: Build release notes from CHANGELOG
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          python3 << 'PY'
+          import os, pathlib, re
+          tag = os.environ["GITHUB_REF_NAME"]
+          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          # Extract section ## vX.Y.Z until next ## or EOF
+          pat = re.compile(rf"(^## {re.escape(tag)}\s*\n)(.*?)(?=^## |\Z)", re.M | re.S)
+          m = pat.search(text)
+          if m:
+              body = f"## {tag}\n" + m.group(2).strip() + "\n"
+          else:
+              body = f"## {tag}\n\n详见 CHANGELOG.md 与提交记录。\n"
+          body += "\n---\n\n完整记录见仓库 [CHANGELOG.md](https://github.com/cnsunsz/pornweb-android/blob/main/CHANGELOG.md)。\n"
+          pathlib.Path("dist/RELEASE_NOTES.md").write_text(body, encoding="utf-8")
+          print(body)
+          PY
+
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.apk
-          generate_release_notes: true
+          body_path: dist/RELEASE_NOTES.md
           draft: false
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

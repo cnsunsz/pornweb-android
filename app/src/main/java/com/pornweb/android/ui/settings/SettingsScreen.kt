@@ -32,7 +32,7 @@ import com.pornweb.android.ui.theme.PwMuted
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit) {
+fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit, onPlaybackSettings: () -> Unit = {}) {
     val app = LocalContext.current.applicationContext as PornWebApp
     val c = app.container
     val user by c.tokenStore.userFlow.collectAsState()
@@ -75,6 +75,10 @@ fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit) {
             modifier = Modifier.fillMaxWidth()
         ) { Text("保存地址") }
         TextButtonLike(onEditServer)
+        Spacer(Modifier.height(16.dp))
+        OutlinedButton(onClick = onPlaybackSettings, modifier = Modifier.fillMaxWidth()) {
+            Text("播放设置")
+        }
         Spacer(Modifier.height(24.dp))
         Text("修改密码", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
@@ -134,7 +138,7 @@ fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit) {
         if (message != null) Text(message!!, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 12.dp))
         if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 12.dp))
         Spacer(Modifier.height(24.dp))
-        Text("PornWeb Android  1.0.0", color = PwMuted, style = MaterialTheme.typography.bodySmall)
+        Text("PornWeb Android  1.0.6", color = PwMuted, style = MaterialTheme.typography.bodySmall)
     }
 }
 

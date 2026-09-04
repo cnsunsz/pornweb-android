@@ -34,6 +34,7 @@ import com.pornweb.android.ui.library.LibraryScreen
 import com.pornweb.android.ui.login.LoginScreen
 import com.pornweb.android.ui.player.PlayerScreen
 import com.pornweb.android.ui.search.SearchScreen
+import com.pornweb.android.ui.settings.PlaybackSettingsScreen
 import com.pornweb.android.ui.settings.SettingsScreen
 import com.pornweb.android.ui.theme.PwBg
 import kotlinx.coroutines.flow.collectLatest
@@ -62,6 +63,7 @@ fun PornWebRoot() {
     fun isTab(route: String?): Boolean {
         val r = route ?: return false
         return r == "home" || r.startsWith("library") || r == "search" || r == "settings"
+            // playback_settings is a subpage without bottom bar
     }
 
     LaunchedEffect(Unit) {
@@ -176,8 +178,12 @@ fun PornWebRoot() {
                         },
                         onEditServer = {
                             nav.navigate("connect")
-                        }
+                        },
+                        onPlaybackSettings = { nav.navigate("playback_settings") }
                     )
+                }
+                composable("playback_settings") {
+                    PlaybackSettingsScreen(onBack = { nav.popBackStack() })
                 }
                 composable(
                     route = "detail/{id}",
@@ -203,7 +209,13 @@ fun PornWebRoot() {
                     val id = entry.arguments?.getLong("id") ?: 0L
                     val part = entry.arguments?.getInt("part") ?: 0
                     val resume = (entry.arguments?.getInt("resume") ?: 1) == 1
-                    PlayerScreen(id = id, part = part, resume = resume, onBack = { nav.popBackStack() })
+                    PlayerScreen(
+                        id = id,
+                        part = part,
+                        resume = resume,
+                        onBack = { nav.popBackStack() },
+                        onOpenSettings = { nav.navigate("playback_settings") }
+                    )
                 }
             }
         }
