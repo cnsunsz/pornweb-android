@@ -6,7 +6,17 @@ class ServerStore(context: Context) {
     private val prefs = context.getSharedPreferences("pw_server", Context.MODE_PRIVATE)
 
     var baseUrl: String
-        get() = prefs.getString(KEY_URL, DEFAULT_URL)?.trim().orEmpty().ifBlank { DEFAULT_URL }
+        get() {
+            val raw = prefs.getString(KEY_URL, null)?.trim().orEmpty()
+            // One-shot migrate: old hardcoded default → new host
+            if (raw.isBlank() || raw == LEGACY_DEFAULT_URL || raw == "$LEGACY_DEFAULT_URL/") {
+                if (raw.isNotBlank()) {
+                    prefs.edit().putString(KEY_URL, DEFAULT_URL).apply()
+                }
+                return DEFAULT_URL
+            }
+            return raw
+        }
         set(value) {
             prefs.edit().putString(KEY_URL, normalize(value)).apply()
         }
@@ -20,7 +30,8 @@ class ServerStore(context: Context) {
     fun normalizedBase(): String = normalize(baseUrl)
 
     companion object {
-        const val DEFAULT_URL = "http://43.196.70.121:10086"
+        const val DEFAULT_URL = "http://web.cnsun.top:2052"
+        private const val LEGACY_DEFAULT_URL = "http://43.196.70.121:10086"
         private const val KEY_URL = "base_url"
         private const val KEY_CONNECTED = "connected"
 
