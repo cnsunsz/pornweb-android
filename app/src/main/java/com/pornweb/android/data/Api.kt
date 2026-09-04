@@ -51,6 +51,18 @@ interface ApiService {
     @GET("api/libraries/")
     suspend fun libraries(): JsonElement
 
+
+    @GET("api/actors")
+    suspend fun actors(@Query("search") search: String? = null): ActorListResponse
+
+    @GET("api/actors/{name}/media")
+    suspend fun actorMedia(
+        @Path("name") name: String,
+        @Query("page") page: Int = 1,
+        @Query("page_size") pageSize: Int = 20,
+        @Query("sort") sort: String? = "newest"
+    ): MediaListResponse
+
     @PUT("api/users/me/password")
     suspend fun changePassword(@Body body: PasswordChangeRequest): Response<Unit>
 }

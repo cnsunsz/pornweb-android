@@ -146,3 +146,18 @@ data class FolderItem(
 data class ApiErrorBody(
     val detail: JsonElement? = null
 )
+
+data class ActorItem(
+    val name: String? = null,
+    val count: Int? = null,
+    @SerializedName("poster_url") val posterUrl: String? = null
+) {
+    fun displayName(): String = name.orEmpty()
+    fun workCount(): Int = count ?: 0
+}
+
+data class ActorListResponse(
+    val items: List<ActorItem>? = null,
+    val total: Int? = null
+)
+

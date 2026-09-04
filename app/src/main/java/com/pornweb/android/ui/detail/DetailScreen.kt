@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -49,8 +51,14 @@ import com.pornweb.android.data.MediaItem
 import com.pornweb.android.ui.theme.PwMuted
 import com.pornweb.android.ui.theme.PwPlaceholder
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun DetailScreen(id: Long, onBack: () -> Unit, onPlay: (id: Long, part: Int, resume: Boolean) -> Unit) {
+fun DetailScreen(
+    id: Long,
+    onBack: () -> Unit,
+    onPlay: (id: Long, part: Int, resume: Boolean) -> Unit,
+    onOpenActor: (String) -> Unit = {}
+) {
     val app = LocalContext.current.applicationContext as PornWebApp
     val c = app.container
     var item by remember { mutableStateOf<MediaItem?>(null) }
@@ -148,7 +156,20 @@ fun DetailScreen(id: Long, onBack: () -> Unit, onPlay: (id: Long, part: Int, res
                     }
                     val cast = media.parsedCast()
                     if (cast.isNotEmpty()) {
-                        Text("演员  ${cast.joinToString("、")}", modifier = Modifier.padding(16.dp, 8.dp, 16.dp, 0.dp))
+                        Text("演员", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 8.dp))
+                        FlowRow(
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            cast.forEach { actorName ->
+                                FilterChip(
+                                    selected = false,
+                                    onClick = { onOpenActor(actorName) },
+                                    label = { Text(actorName) }
+                                )
+                            }
+                        }
                     }
                     if (!media.plot.isNullOrBlank()) {
                         Text("简介", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 4.dp))

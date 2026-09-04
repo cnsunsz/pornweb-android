@@ -150,6 +150,17 @@ class AppContainer(context: Context) {
         }
     }
 
+
+    fun resolveAssetPath(raw: String?): String {
+        if (raw.isNullOrBlank()) return ""
+        if (raw.startsWith("http://") || raw.startsWith("https://")) return appendToken(raw)
+        val path = if (raw.startsWith("/")) raw else "/$raw"
+        val base = serverStore.normalizedBase()
+        val token = Uri.encode(tokenStore.token.orEmpty())
+        val joiner = if (path.contains("?")) "&" else "?"
+        return "$base$path${joiner}token=$token"
+    }
+
     private fun mediaAssetUrl(kind: String, id: Long): String {
         val token = Uri.encode(tokenStore.token.orEmpty())
         val base = serverStore.normalizedBase()

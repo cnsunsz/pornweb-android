@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
@@ -27,6 +28,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.pornweb.android.PornWebApp
+import com.pornweb.android.ui.actors.ActorMediaScreen
+import com.pornweb.android.ui.actors.ActorsScreen
 import com.pornweb.android.ui.connect.ServerConnectScreen
 import com.pornweb.android.ui.detail.DetailScreen
 import com.pornweb.android.ui.home.HomeScreen
@@ -44,6 +47,7 @@ private data class Tab(val route: String, val label: String, val icon: androidx.
 private val tabs = listOf(
     Tab("home", "首页", Icons.Default.Home),
     Tab("library", "媒体库", Icons.Default.GridView),
+    Tab("actors", "演员", Icons.Default.People),
     Tab("search", "搜索", Icons.Default.Search),
     Tab("settings", "我的", Icons.Default.Person)
 )
@@ -62,7 +66,7 @@ fun PornWebRoot() {
     val current = backStack?.destination?.route ?: start
     fun isTab(route: String?): Boolean {
         val r = route ?: return false
-        return r == "home" || r.startsWith("library") || r == "search" || r == "settings"
+        return r == "home" || r.startsWith("library") || r == "actors" || r == "search" || r == "settings"
             // playback_settings is a subpage without bottom bar
     }
 
@@ -166,6 +170,22 @@ fun PornWebRoot() {
                     }
                     LibraryScreen(initialFolder = folder, onOpenMedia = { id -> nav.navigate("detail/$id") })
                 }
+                composable("actors") {
+                    ActorsScreen(onOpenActor = { name ->
+                        nav.navigate("actor/" + android.net.Uri.encode(name))
+                    })
+                }
+                composable(
+                    route = "actor/{name}",
+                    arguments = listOf(navArgument("name") { type = NavType.StringType })
+                ) { entry ->
+                    val actorName = android.net.Uri.decode(entry.arguments?.getString("name").orEmpty())
+                    ActorMediaScreen(
+                        name = actorName,
+                        onBack = { nav.popBackStack() },
+                        onOpenMedia = { id -> nav.navigate("detail/$id") }
+                    )
+                }
                 composable("search") {
                     SearchScreen(onOpenMedia = { id -> nav.navigate("detail/$id") })
                 }
@@ -195,6 +215,9 @@ fun PornWebRoot() {
                         onBack = { nav.popBackStack() },
                         onPlay = { mediaId, part, resume ->
                             nav.navigate("player/$mediaId?part=$part&resume=${if (resume) 1 else 0}")
+                        },
+                        onOpenActor = { name ->
+                            nav.navigate("actor/" + android.net.Uri.encode(name))
                         }
                     )
                 }
