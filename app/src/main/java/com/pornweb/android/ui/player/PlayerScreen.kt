@@ -2,12 +2,14 @@ package com.pornweb.android.ui.player
 
 import android.app.Activity
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.view.LayoutInflater
 import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,10 +19,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,17 +48,23 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -67,6 +80,10 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
+import kotlin.math.roundToLong
+
+private enum class OrientMode { Sensor, Landscape, Portrait }
 
 @Composable
 fun PlayerScreen(id: Long, part: Int, resume: Boolean, onBack: () -> Unit) {
@@ -100,7 +117,7 @@ fun PlayerScreen(id: Long, part: Int, resume: Boolean, onBack: () -> Unit) {
 
     DisposableEffect(Unit) {
         val prev = activity.requestedOrientation
-        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
+        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
         activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose {
             activity.requestedOrientation = prev
@@ -137,6 +154,7 @@ fun PlayerScreen(id: Long, part: Int, resume: Boolean, onBack: () -> Unit) {
     )
 }
 
+@OptIn(UnstableApi::class)
 @Composable
 private fun PlayerBody(
     id: Long,
@@ -148,8 +166,11 @@ private fun PlayerBody(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val activity = context as Activity
     val app = context.applicationContext as PornWebApp
     val c = app.container
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
     val url = remember(id, part, c.tokenStore.token, c.serverStore.baseUrl) { c.streamUrl(id, part) }
     val token = c.tokenStore.token.orEmpty()
     val startMsState = rememberUpdatedState(startPositionMs)
@@ -164,23 +185,42 @@ private fun PlayerBody(
             .followSslRedirects(true)
             .build()
         val factory = OkHttpDataSource.Factory(okHttp)
-            .setUserAgent("PornWeb-Android/1.0.3")
+            .setUserAgent("PornWeb-Android/1.0.4")
             .setDefaultRequestProperties(
                 buildMap {
                     if (token.isNotBlank()) put("Authorization", "Bearer $token")
                     put("Accept", "*/*")
                 }
             )
+        // Prefer hardware for 4K (HEVC/AV1/VP9); fall back to another decoder if needed.
+        val renderersFactory = DefaultRenderersFactory(context)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            .setEnableDecoderFallback(true)
+            .setEnableAudioFloatOutput(true)
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs */ 50_000,
+                /* maxBufferMs */ 120_000,
+                /* bufferForPlaybackMs */ 2_500,
+                /* bufferForPlaybackAfterRebufferMs */ 5_000
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
         ExoPlayer.Builder(context)
+            .setRenderersFactory(renderersFactory)
+            .setLoadControl(loadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(factory))
             .build()
             .apply {
                 playWhenReady = true
                 videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+                videoChangeFrameRateStrategy = C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS
             }
     }
 
     var controlsVisible by remember { mutableStateOf(true) }
+    var locked by remember { mutableStateOf(false) }
+    var orientMode by remember { mutableStateOf(OrientMode.Sensor) }
     var playing by remember { mutableStateOf(true) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var positionMs by remember { mutableLongStateOf(0L) }
@@ -188,6 +228,27 @@ private fun PlayerBody(
     var seekValue by remember { mutableFloatStateOf(0f) }
     var playError by remember { mutableStateOf<String?>(null) }
     var buffering by remember { mutableStateOf(false) }
+    var swipeHint by remember { mutableStateOf<String?>(null) }
+    var dragAccumPx by remember { mutableFloatStateOf(0f) }
+    var dragBasePos by remember { mutableLongStateOf(0L) }
+
+    fun applyOrient(mode: OrientMode, lockControls: Boolean) {
+        if (lockControls) {
+            // MX-style lock: freeze current orientation
+            val landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+            activity.requestedOrientation = if (landscape) {
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            } else {
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            }
+            return
+        }
+        activity.requestedOrientation = when (mode) {
+            OrientMode.Sensor -> ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+            OrientMode.Landscape -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            OrientMode.Portrait -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        }
+    }
 
     DisposableEffect(player) {
         onDispose {
@@ -247,15 +308,27 @@ private fun PlayerBody(
         }
     }
 
-    LaunchedEffect(controlsVisible, playing) {
-        if (controlsVisible && playing && playError == null) {
+    LaunchedEffect(controlsVisible, playing, locked) {
+        if (controlsVisible && playing && playError == null && !locked) {
             delay(4_000)
             controlsVisible = false
         }
     }
 
+    LaunchedEffect(swipeHint) {
+        if (swipeHint != null) {
+            delay(900)
+            swipeHint = null
+        }
+    }
+
+    LaunchedEffect(locked, orientMode) {
+        applyOrient(orientMode, locked)
+    }
+
     val durationForSlider = durationMs.coerceAtLeast(1L).toFloat()
     val sliderPos = if (seeking) seekValue else positionMs.toFloat().coerceIn(0f, durationForSlider)
+    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }.coerceAtLeast(1f)
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
@@ -270,15 +343,62 @@ private fun PlayerBody(
             update = { it.player = player },
             modifier = Modifier.fillMaxSize()
         )
+
+        // Gesture layer: tap / horizontal swipe seek (disabled when locked)
         Box(
             Modifier
                 .fillMaxSize()
-                .pointerInput(Unit) {
-                    detectTapGestures {
-                        controlsVisible = !controlsVisible
+                .pointerInput(locked) {
+                    if (locked) {
+                        detectTapGestures {
+                            controlsVisible = true
+                        }
+                    } else {
+                        detectTapGestures {
+                            controlsVisible = !controlsVisible
+                        }
                     }
                 }
+                .pointerInput(locked, durationMs) {
+                    if (locked) return@pointerInput
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            dragAccumPx = 0f
+                            dragBasePos = player.currentPosition.coerceAtLeast(0)
+                            seeking = true
+                            controlsVisible = true
+                        },
+                        onDragEnd = {
+                            val target = seekValue.toLong().coerceIn(0L, durationMs.coerceAtLeast(0L))
+                            player.seekTo(target)
+                            positionMs = target
+                            seeking = false
+                            dragAccumPx = 0f
+                        },
+                        onDragCancel = {
+                            seeking = false
+                            dragAccumPx = 0f
+                        },
+                        onHorizontalDrag = { _, dragAmount ->
+                            dragAccumPx += dragAmount
+                            // Full-width swipe ≈ ±90s (MX-like feel); scales with duration a bit.
+                            val maxSeekMs = when {
+                                durationMs > 3_600_000 -> 180_000.0
+                                durationMs > 600_000 -> 120_000.0
+                                else -> 90_000.0
+                            }
+                            val deltaMs = (dragAccumPx / screenWidthPx) * maxSeekMs
+                            val target = (dragBasePos + deltaMs.roundToLong())
+                                .coerceIn(0L, if (durationMs > 0) durationMs else Long.MAX_VALUE / 4)
+                            seekValue = target.toFloat()
+                            val signed = target - dragBasePos
+                            val sign = if (signed >= 0) "+" else "-"
+                            swipeHint = "$sign${formatTime(abs(signed))} → ${formatTime(target)}"
+                        }
+                    )
+                }
         )
+
         if (playError != null) {
             Text(
                 playError!!,
@@ -286,18 +406,51 @@ private fun PlayerBody(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .padding(24.dp)
-                    .background(Color.Black.copy(alpha = 0.6f))
+                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                     .padding(12.dp)
             )
-        } else if (buffering) {
+        } else if (buffering && swipeHint == null) {
+            Text("缓冲中…", color = Color.White, modifier = Modifier.align(Alignment.Center))
+        }
+
+        if (swipeHint != null) {
             Text(
-                "缓冲中…",
+                swipeHint!!,
                 color = Color.White,
-                modifier = Modifier.align(Alignment.Center)
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
             )
         }
+
+        // MX-style lock: only unlock button when locked
+        if (locked) {
+            AnimatedVisibility(
+                visible = controlsVisible,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.CenterEnd)
+            ) {
+                IconButton(
+                    onClick = {
+                        locked = false
+                        controlsVisible = true
+                        applyOrient(orientMode, false)
+                    },
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.55f))
+                ) {
+                    Icon(Icons.Default.LockOpen, contentDescription = "解锁", tint = Color.White)
+                }
+            }
+        }
+
         AnimatedVisibility(
-            visible = controlsVisible,
+            visible = controlsVisible && !locked,
             enter = fadeIn(),
             exit = fadeOut()
         ) {
@@ -307,7 +460,7 @@ private fun PlayerBody(
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
                         .background(
-                            Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent))
+                            Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.75f), Color.Transparent))
                         )
                         .statusBarsPadding()
                         .padding(horizontal = 4.dp, vertical = 4.dp)
@@ -321,9 +474,45 @@ private fun PlayerBody(
                             color = Color.White,
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 2,
-                            modifier = Modifier.padding(end = 12.dp).weight(1f)
+                            modifier = Modifier.padding(end = 4.dp).weight(1f)
                         )
+                        IconButton(onClick = {
+                            orientMode = when (orientMode) {
+                                OrientMode.Sensor -> OrientMode.Landscape
+                                OrientMode.Landscape -> OrientMode.Portrait
+                                OrientMode.Portrait -> OrientMode.Sensor
+                            }
+                            applyOrient(orientMode, false)
+                            controlsVisible = true
+                        }) {
+                            Icon(
+                                Icons.Default.ScreenRotation,
+                                contentDescription = when (orientMode) {
+                                    OrientMode.Sensor -> "自动旋转"
+                                    OrientMode.Landscape -> "横屏锁定"
+                                    OrientMode.Portrait -> "竖屏锁定"
+                                },
+                                tint = Color.White
+                            )
+                        }
+                        IconButton(onClick = {
+                            locked = true
+                            controlsVisible = true
+                            applyOrient(orientMode, true)
+                        }) {
+                            Icon(Icons.Default.Lock, contentDescription = "锁定", tint = Color.White)
+                        }
                     }
+                    Text(
+                        when (orientMode) {
+                            OrientMode.Sensor -> "旋转：自动"
+                            OrientMode.Landscape -> "旋转：横屏"
+                            OrientMode.Portrait -> "旋转：竖屏"
+                        },
+                        color = Color.White.copy(alpha = 0.75f),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(start = 56.dp, bottom = 4.dp)
+                    )
                     if (extras.size > 1) {
                         Row(modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)) {
                             extras.forEachIndexed { i, extra ->
@@ -342,7 +531,7 @@ private fun PlayerBody(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .background(
-                            Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f)))
+                            Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f)))
                         )
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
