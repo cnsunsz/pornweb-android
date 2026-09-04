@@ -123,6 +123,13 @@ git push origin v1.0.0
 - `SIGNING_KEY_ALIAS`
 - `SIGNING_KEY_PASSWORD`
 
+
+## 覆盖安装（签名）
+
+从 **v1.0.5** 起，debug / release APK 都使用仓库内固定的 `keystore/pornweb.jks` 签名，因此后续版本可以直接覆盖安装，不必先卸载。
+
+若手机上已安装 **v1.0.4 及更早**（当时 GitHub Actions 用的是临时 debug 签名），第一次装 1.0.5 仍需卸载旧包一次；之后就都可覆盖更新。
+
 ## 许可证
 
 MIT

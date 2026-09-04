@@ -10,6 +10,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +20,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
@@ -531,46 +539,108 @@ private fun PlayerBody(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .background(
-                            Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f)))
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.5f))
+                            )
                         )
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
                 ) {
-                    Slider(
-                        value = sliderPos,
-                        onValueChange = { v ->
-                            seeking = true
-                            controlsVisible = true
-                            seekValue = v
-                        },
-                        onValueChangeFinished = {
-                            player.seekTo(seekValue.toLong().coerceAtLeast(0))
-                            positionMs = seekValue.toLong()
-                            seeking = false
-                        },
-                        valueRange = 0f..durationForSlider,
-                        colors = SliderDefaults.colors(
-                            thumbColor = Color.White,
-                            activeTrackColor = Color(0xFF22D3EE),
-                            inactiveTrackColor = Color.White.copy(alpha = 0.35f)
+                    val barFraction = (sliderPos / durationForSlider).coerceIn(0f, 1f)
+                    var barWidthPx by remember { mutableFloatStateOf(1f) }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(14.dp)
+                            .onSizeChanged { barWidthPx = it.width.toFloat().coerceAtLeast(1f) }
+                            .pointerInput(durationMs) {
+                                detectTapGestures { offset ->
+                                    val x = offset.x.coerceIn(0f, barWidthPx)
+                                    val target = ((x / barWidthPx) * durationForSlider).toLong()
+                                    seekValue = target.toFloat()
+                                    player.seekTo(target)
+                                    positionMs = target
+                                    controlsVisible = true
+                                }
+                            }
+                            .pointerInput(durationMs) {
+                                detectHorizontalDragGestures(
+                                    onDragStart = {
+                                        seeking = true
+                                        controlsVisible = true
+                                    },
+                                    onDragEnd = {
+                                        player.seekTo(seekValue.toLong().coerceAtLeast(0))
+                                        positionMs = seekValue.toLong()
+                                        seeking = false
+                                    },
+                                    onDragCancel = { seeking = false },
+                                    onHorizontalDrag = { change, _ ->
+                                        val x = change.position.x.coerceIn(0f, barWidthPx)
+                                        seekValue = (x / barWidthPx) * durationForSlider
+                                        seeking = true
+                                    }
+                                )
+                            },
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(2.dp)
+                                .clip(RoundedCornerShape(1.dp))
+                                .background(Color.White.copy(alpha = 0.28f))
                         )
-                    )
+                        Box(
+                            Modifier
+                                .fillMaxWidth(barFraction)
+                                .height(2.dp)
+                                .clip(RoundedCornerShape(1.dp))
+                                .background(Color(0xFF22D3EE))
+                        )
+                        Box(
+                            Modifier
+                                .fillMaxWidth(barFraction)
+                                .height(14.dp),
+                            contentAlignment = Alignment.CenterEnd
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF22D3EE))
+                            )
+                        }
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(formatTime(if (seeking) seekValue.toLong() else positionMs), color = Color.White)
-                        IconButton(onClick = {
-                            if (player.isPlaying) player.pause() else player.play()
-                            controlsVisible = true
-                        }) {
+                        Text(
+                            formatTime(if (seeking) seekValue.toLong() else positionMs),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                        Spacer(Modifier.weight(1f))
+                        IconButton(
+                            onClick = {
+                                if (player.isPlaying) player.pause() else player.play()
+                                controlsVisible = true
+                            },
+                            modifier = Modifier.size(34.dp)
+                        ) {
                             Icon(
                                 if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = if (playing) "暂停" else "播放",
-                                tint = Color.White
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
-                        Text(formatTime(durationMs), color = Color.White)
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            formatTime(durationMs),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall
+                        )
                     }
                 }
             }
