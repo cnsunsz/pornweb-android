@@ -93,9 +93,26 @@ class AppContainer(context: Context) {
         .build()
         .create(ApiService::class.java)
 
+    // Images must not inherit Accept: application/json from the API client.
+    private val imageHttpClient: OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor { chain ->
+            val token = tokenStore.token
+            val b = chain.request().newBuilder()
+                .header("Accept", "image/*,*/*;q=0.8")
+            if (!token.isNullOrBlank()) {
+                b.header("Authorization", "Bearer $token")
+            }
+            chain.proceed(b.build())
+        }
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .callTimeout(90, TimeUnit.SECONDS)
+        .build()
+
     val imageLoader: ImageLoader = ImageLoader.Builder(context)
-        .okHttpClient(httpClient)
+        .okHttpClient(imageHttpClient)
         .crossfade(true)
+        .respectCacheHeaders(false)
         .build()
 
     fun posterUrl(id: Long?): String {
@@ -116,11 +133,20 @@ class AppContainer(context: Context) {
 
     fun resolveImage(item: MediaItem?, kind: String = "poster"): String {
         if (item == null) return ""
+        val id = item.mediaId()
+        if (id <= 0L) return ""
         val raw = if (kind == "fanart") item.fanartUrl else item.posterUrl
+        // Absolute remote URLs: keep them. Relative /media/... paths 404 on nginx —
+        // always use the authenticated API endpoints instead.
         if (!raw.isNullOrBlank() && (raw.startsWith("http://") || raw.startsWith("https://"))) {
             return appendToken(raw)
         }
-        return if (kind == "fanart") fanartUrl(item.mediaId()) else posterUrl(item.mediaId())
+        return if (kind == "fanart") {
+            // Fanart is optional; fall back to poster if missing.
+            if (raw.isNullOrBlank()) posterUrl(id) else fanartUrl(id)
+        } else {
+            posterUrl(id)
+        }
     }
 
     private fun mediaAssetUrl(kind: String, id: Long): String {

@@ -2,8 +2,8 @@ package com.pornweb.android.ui.player
 
 import android.app.Activity
 import android.content.pm.ActivityInfo
+import android.view.LayoutInflater
 import android.view.WindowManager
-import android.widget.FrameLayout
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -49,13 +49,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.pornweb.android.PornWebApp
+import com.pornweb.android.R
 import com.pornweb.android.data.ExtraFile
 import com.pornweb.android.data.ProgressRequest
 import kotlinx.coroutines.CoroutineScope
@@ -63,6 +65,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 
 @Composable
 fun PlayerScreen(id: Long, part: Int, resume: Boolean, onBack: () -> Unit) {
@@ -75,18 +79,20 @@ fun PlayerScreen(id: Long, part: Int, resume: Boolean, onBack: () -> Unit) {
     var startPositionMs by remember { mutableStateOf(0L) }
     var ready by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
+    var loadError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(id) {
         try {
             val d = c.api.detail(id)
-            extras = d.extraFiles.orEmpty()
+            extras = d.extraFileList()
             title = d.displayTitle()
             val p = d.progress ?: 0.0
             val dur = d.duration ?: 0.0
             val nearEnd = dur > 0 && p >= dur * 0.95
             startPositionMs = if (resume && p > 5 && !nearEnd) (p * 1000).toLong() else 0L
             if (d.progressPart != null && resume) currentPart = d.progressPart
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            loadError = c.parseError(e)
         } finally {
             ready = true
         }
@@ -105,6 +111,17 @@ fun PlayerScreen(id: Long, part: Int, resume: Boolean, onBack: () -> Unit) {
     if (!ready) {
         Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
             Text("正在准备播放…", color = Color.White)
+        }
+        return
+    }
+    if (loadError != null) {
+        Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(loadError!!, color = Color.White, modifier = Modifier.padding(24.dp))
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Color.White)
+                }
+            }
         }
         return
     }
@@ -138,18 +155,24 @@ private fun PlayerBody(
     val startMsState = rememberUpdatedState(startPositionMs)
 
     val player = remember {
-        val http = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(30_000)
-            .setReadTimeoutMs(60_000)
+        val okHttp = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(0, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(0, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .build()
+        val factory = OkHttpDataSource.Factory(okHttp)
+            .setUserAgent("PornWeb-Android/1.0.3")
             .setDefaultRequestProperties(
                 buildMap {
                     if (token.isNotBlank()) put("Authorization", "Bearer $token")
-                    put("User-Agent", "PornWeb-Android/1.0")
+                    put("Accept", "*/*")
                 }
             )
         ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(http))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(factory))
             .build()
             .apply {
                 playWhenReady = true
@@ -163,6 +186,8 @@ private fun PlayerBody(
     var positionMs by remember { mutableLongStateOf(0L) }
     var seeking by remember { mutableStateOf(false) }
     var seekValue by remember { mutableFloatStateOf(0f) }
+    var playError by remember { mutableStateOf<String?>(null) }
+    var buffering by remember { mutableStateOf(false) }
 
     DisposableEffect(player) {
         onDispose {
@@ -172,6 +197,7 @@ private fun PlayerBody(
     }
 
     LaunchedEffect(url) {
+        playError = null
         player.setMediaItem(MediaItem.fromUri(url))
         player.prepare()
         val start = startMsState.value
@@ -182,6 +208,7 @@ private fun PlayerBody(
     DisposableEffect(player, id, part) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
+                buffering = playbackState == Player.STATE_BUFFERING
                 if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
                     saveProgress(c, id, part, player)
                 }
@@ -190,6 +217,11 @@ private fun PlayerBody(
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 playing = isPlaying
                 if (!isPlaying) saveProgress(c, id, part, player)
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                playError = error.message ?: "播放失败 (${error.errorCode})"
+                controlsVisible = true
             }
         }
         player.addListener(listener)
@@ -216,7 +248,7 @@ private fun PlayerBody(
     }
 
     LaunchedEffect(controlsVisible, playing) {
-        if (controlsVisible && playing) {
+        if (controlsVisible && playing && playError == null) {
             delay(4_000)
             controlsVisible = false
         }
@@ -228,16 +260,12 @@ private fun PlayerBody(
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
             factory = { ctx ->
-                PlayerView(ctx).apply {
-                    useController = false
-                    this.player = player
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    keepScreenOn = true
-                    layoutParams = FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.MATCH_PARENT
-                    )
-                }
+                val view = LayoutInflater.from(ctx).inflate(R.layout.player_view, null, false) as PlayerView
+                view.player = player
+                view.useController = false
+                view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                view.keepScreenOn = true
+                view
             },
             update = { it.player = player },
             modifier = Modifier.fillMaxSize()
@@ -251,6 +279,23 @@ private fun PlayerBody(
                     }
                 }
         )
+        if (playError != null) {
+            Text(
+                playError!!,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(24.dp)
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .padding(12.dp)
+            )
+        } else if (buffering) {
+            Text(
+                "缓冲中…",
+                color = Color.White,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
         AnimatedVisibility(
             visible = controlsVisible,
             enter = fadeIn(),

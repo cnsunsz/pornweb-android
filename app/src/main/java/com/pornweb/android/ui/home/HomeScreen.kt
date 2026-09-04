@@ -34,6 +34,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.pornweb.android.PornWebApp
 import com.pornweb.android.data.LibraryItem
 import com.pornweb.android.data.MediaItem
@@ -193,7 +194,14 @@ private fun LibraryTile(lib: LibraryItem, poster: String, onClick: () -> Unit) {
                 .background(PwPlaceholder)
         ) {
             if (poster.isNotBlank()) {
-                AsyncImage(model = poster, contentDescription = lib.displayName(), contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                val app = LocalContext.current.applicationContext as PornWebApp
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current).data(poster).crossfade(true).build(),
+                    imageLoader = app.container.imageLoader,
+                    contentDescription = lib.displayName(),
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
             }
         }
         Text(lib.displayName(), style = MaterialTheme.typography.titleMedium, maxLines = 1, modifier = Modifier.padding(top = 6.dp))

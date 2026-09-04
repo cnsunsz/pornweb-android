@@ -62,12 +62,36 @@ data class MediaItem(
     @SerializedName("file_size") val fileSize: Long? = null,
     val folder: String? = null,
     @SerializedName("created_at") val createdAt: String? = null,
-    @SerializedName("extra_files") val extraFiles: List<ExtraFile>? = null,
+    @SerializedName("extra_files") val extraFilesRaw: JsonElement? = null,
     val duration: Double? = null,
     val progress: Double? = null,
     @SerializedName("progress_part") val progressPart: Int? = null
 ) {
     fun mediaId(): Long = id ?: 0L
+
+    fun extraFileList(): List<ExtraFile> {
+        val raw = extraFilesRaw ?: return emptyList()
+        val gson = com.google.gson.Gson()
+        try {
+            if (raw.isJsonArray) {
+                return raw.asJsonArray.mapNotNull {
+                    try { gson.fromJson(it, ExtraFile::class.java) } catch (_: Exception) { null }
+                }
+            }
+            if (raw.isJsonPrimitive) {
+                val s = raw.asString.trim()
+                if (s.isEmpty()) return emptyList()
+                val parsed = com.google.gson.JsonParser.parseString(s)
+                if (parsed.isJsonArray) {
+                    return parsed.asJsonArray.mapNotNull {
+                        try { gson.fromJson(it, ExtraFile::class.java) } catch (_: Exception) { null }
+                    }
+                }
+            }
+        } catch (_: Exception) {
+        }
+        return emptyList()
+    }
     fun displayTitle(): String = title?.ifBlank { filename } ?: filename ?: "未命名"
     fun progressRatio(): Float {
         val d = duration ?: 0.0

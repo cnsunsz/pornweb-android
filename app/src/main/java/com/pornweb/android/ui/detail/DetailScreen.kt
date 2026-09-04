@@ -43,6 +43,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.pornweb.android.PornWebApp
 import com.pornweb.android.data.MediaItem
 import com.pornweb.android.ui.theme.PwMuted
@@ -80,7 +81,7 @@ fun DetailScreen(id: Long, onBack: () -> Unit, onPlay: (id: Long, part: Int, res
                 val fanart = c.resolveImage(media, "fanart")
                 val poster = c.resolveImage(media, "poster")
                 val progress = media.progress ?: 0.0
-                val extras = media.extraFiles.orEmpty()
+                val extras = media.extraFileList()
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                     Box(
                         modifier = Modifier
@@ -89,7 +90,13 @@ fun DetailScreen(id: Long, onBack: () -> Unit, onPlay: (id: Long, part: Int, res
                             .background(PwPlaceholder)
                     ) {
                         if (fanart.isNotBlank()) {
-                            AsyncImage(model = fanart, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current).data(fanart).crossfade(true).build(),
+                                imageLoader = c.imageLoader,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
                         Box(
                             Modifier
@@ -109,7 +116,13 @@ fun DetailScreen(id: Long, onBack: () -> Unit, onPlay: (id: Long, part: Int, res
                                 .background(PwPlaceholder)
                         ) {
                             if (poster.isNotBlank()) {
-                                AsyncImage(model = poster, contentDescription = media.displayTitle(), contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current).data(poster).crossfade(true).build(),
+                                    imageLoader = c.imageLoader,
+                                    contentDescription = media.displayTitle(),
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
                             }
                         }
                         Column(Modifier.padding(start = 16.dp).weight(1f)) {

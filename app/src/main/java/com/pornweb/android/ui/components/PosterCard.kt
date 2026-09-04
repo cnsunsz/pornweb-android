@@ -19,12 +19,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import coil.compose.AsyncImagePainter
-import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
+import com.pornweb.android.PornWebApp
 import com.pornweb.android.data.MediaItem
 import com.pornweb.android.ui.theme.PwMuted
 import com.pornweb.android.ui.theme.PwPlaceholder
@@ -39,6 +40,9 @@ fun PosterCard(
     showProgress: Boolean = true,
     onClick: () -> Unit
 ) {
+    val app = LocalContext.current.applicationContext as PornWebApp
+    val loader = app.container.imageLoader
+    val context = LocalContext.current
     Column(
         modifier = modifier
             .width(width)
@@ -53,7 +57,11 @@ fun PosterCard(
         ) {
             if (imageUrl.isNotBlank()) {
                 AsyncImage(
-                    model = imageUrl,
+                    model = ImageRequest.Builder(context)
+                        .data(imageUrl)
+                        .crossfade(true)
+                        .build(),
+                    imageLoader = loader,
                     contentDescription = item.displayTitle(),
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
@@ -96,6 +104,9 @@ fun PosterGridCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
+    val app = LocalContext.current.applicationContext as PornWebApp
+    val loader = app.container.imageLoader
+    val context = LocalContext.current
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -110,7 +121,11 @@ fun PosterGridCard(
         ) {
             if (imageUrl.isNotBlank()) {
                 AsyncImage(
-                    model = imageUrl,
+                    model = ImageRequest.Builder(context)
+                        .data(imageUrl)
+                        .crossfade(true)
+                        .build(),
+                    imageLoader = loader,
                     contentDescription = item.displayTitle(),
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
