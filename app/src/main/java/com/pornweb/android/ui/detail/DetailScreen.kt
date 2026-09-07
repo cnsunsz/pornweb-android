@@ -1,5 +1,6 @@
 package com.pornweb.android.ui.detail
 
+import android.content.ActivityNotFoundException
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material3.Button
@@ -50,6 +52,7 @@ import com.pornweb.android.PornWebApp
 import com.pornweb.android.data.MediaItem
 import com.pornweb.android.ui.theme.PwMuted
 import com.pornweb.android.ui.theme.PwPlaceholder
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -65,6 +68,15 @@ fun DetailScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var part by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(true) }
+    var snackMsg by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+
+    LaunchedEffect(snackMsg) {
+        if (snackMsg != null) {
+            delay(2500)
+            snackMsg = null
+        }
+    }
 
     LaunchedEffect(id) {
         loading = true
@@ -204,6 +216,27 @@ fun DetailScreen(
                                 Text("从头播放")
                             }
                         }
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            try {
+                                c.openExternalPlayer(context, media.mediaId(), part, media.displayTitle())
+                            } catch (_: ActivityNotFoundException) {
+                                snackMsg = "没有可用的外部播放器"
+                            }
+                        },
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    ) {
+                        Icon(Icons.Default.OpenInNew, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("外部播放器")
+                    }
+                    if (snackMsg != null) {
+                        Text(
+                            snackMsg!!,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(16.dp, 8.dp, 16.dp, 0.dp)
+                        )
                     }
                     Spacer(Modifier.height(32.dp))
                 }

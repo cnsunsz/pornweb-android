@@ -1,6 +1,7 @@
 package com.pornweb.android.data
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import coil.ImageLoader
@@ -155,6 +156,24 @@ class AppContainer(context: Context) {
         val token = Uri.encode(tokenStore.token.orEmpty())
         val joiner = if (path.contains("?")) "&" else "?"
         return "$base$path${joiner}token=$token"
+    }
+
+    /** Actor face only — never fall back to a media work poster. */
+    fun resolveActorPhoto(posterUrl: String?): String {
+        if (posterUrl.isNullOrBlank()) return ""
+        if (posterUrl.contains("/api/media/poster")) return ""
+        return resolveAssetPath(posterUrl)
+    }
+
+    fun openExternalPlayer(context: Context, mediaId: Long, part: Int = 0, title: String? = null) {
+        val url = streamUrl(mediaId, part)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(Uri.parse(url), "video/*")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            putExtra("title", title)
+            putExtra(Intent.EXTRA_TITLE, title)
+        }
+        context.startActivity(Intent.createChooser(intent, "选择外部播放器"))
     }
 
     private fun mediaAssetUrl(kind: String, id: Long): String {

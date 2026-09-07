@@ -1,6 +1,7 @@
 package com.pornweb.android.ui.player
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.view.LayoutInflater
@@ -26,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -252,6 +254,7 @@ private fun PlayerBody(
     var seeking by remember { mutableStateOf(false) }
     var seekValue by remember { mutableFloatStateOf(0f) }
     var playError by remember { mutableStateOf<String?>(null) }
+    var externalHint by remember { mutableStateOf<String?>(null) }
     var buffering by remember { mutableStateOf(false) }
     var swipeHint by remember { mutableStateOf<String?>(null) }
     var speedHint by remember { mutableStateOf<String?>(null) }
@@ -353,6 +356,13 @@ private fun PlayerBody(
         if (swipeHint != null) {
             delay(900)
             swipeHint = null
+        }
+    }
+
+    LaunchedEffect(externalHint) {
+        if (externalHint != null) {
+            delay(2500)
+            externalHint = null
         }
     }
 
@@ -506,6 +516,16 @@ private fun PlayerBody(
                     .padding(horizontal = 18.dp, vertical = 8.dp)
             )
         }
+        if (externalHint != null) {
+            Text(
+                externalHint!!,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            )
+        }
 
         if (locked) {
             AnimatedVisibility(
@@ -557,6 +577,17 @@ private fun PlayerBody(
                             maxLines = 2,
                             modifier = Modifier.padding(end = 4.dp).weight(1f)
                         )
+                        IconButton(onClick = {
+                            try {
+                                player.pause()
+                                c.openExternalPlayer(context, id, part, title)
+                            } catch (_: ActivityNotFoundException) {
+                                externalHint = "没有可用的外部播放器"
+                            }
+                            controlsVisible = true
+                        }) {
+                            Icon(Icons.Default.OpenInNew, contentDescription = "外部播放", tint = Color.White)
+                        }
                         IconButton(onClick = onOpenSettings) {
                             Icon(Icons.Default.Settings, contentDescription = "播放设置", tint = Color.White)
                         }

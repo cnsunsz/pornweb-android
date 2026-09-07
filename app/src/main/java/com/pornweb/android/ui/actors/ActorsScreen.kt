@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -134,7 +135,7 @@ fun ActorsScreen(onOpenActor: (String) -> Unit) {
                     items(items, key = { it.displayName() }) { actor ->
                         ActorPosterCard(
                             actor = actor,
-                            imageUrl = c.resolveAssetPath(actor.posterUrl),
+                            imageUrl = c.resolveActorPhoto(actor.posterUrl),
                             onClick = {
                                 val name = actor.displayName()
                                 if (name.isNotBlank()) onOpenActor(name)
@@ -157,6 +158,8 @@ fun ActorPosterCard(
     val app = LocalContext.current.applicationContext as PornWebApp
     val loader = app.container.imageLoader
     val context = LocalContext.current
+    var loadFailed by remember(imageUrl) { mutableStateOf(false) }
+    val showImage = imageUrl.isNotBlank() && !loadFailed
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -167,9 +170,10 @@ fun ActorPosterCard(
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
                 .clip(RoundedCornerShape(8.dp))
-                .background(PwPlaceholder)
+                .background(PwPlaceholder),
+            contentAlignment = Alignment.Center
         ) {
-            if (imageUrl.isNotBlank()) {
+            if (showImage) {
                 AsyncImage(
                     model = ImageRequest.Builder(context)
                         .data(imageUrl)
@@ -178,7 +182,15 @@ fun ActorPosterCard(
                     imageLoader = loader,
                     contentDescription = actor.displayName(),
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    onError = { loadFailed = true }
+                )
+            } else {
+                Icon(
+                    Icons.Default.Person,
+                    contentDescription = null,
+                    tint = PwMuted,
+                    modifier = Modifier.fillMaxWidth(0.45f).aspectRatio(1f)
                 )
             }
         }

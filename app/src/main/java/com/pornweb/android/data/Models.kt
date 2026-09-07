@@ -150,7 +150,8 @@ data class ApiErrorBody(
 data class ActorItem(
     val name: String? = null,
     val count: Int? = null,
-    @SerializedName("poster_url") val posterUrl: String? = null
+    @SerializedName("poster_url") val posterUrl: String? = null,
+    @SerializedName("poster_media_id") val posterMediaId: Long? = null
 ) {
     fun displayName(): String = name.orEmpty()
     fun workCount(): Int = count ?: 0
