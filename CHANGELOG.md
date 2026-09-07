@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.14
+### 改进
+- 详情页 Emby 风演员墙：简介下方横向圆照 + 姓名；有 `/api/actors/photo` 才出图，没有留空
+
+
 ## v1.0.13
 ### 改进
 - 对齐网页 v2.1.6 演员照：列表有 `poster_url`（`/api/actors/photo`）才加载，无照留空；不跟管理端补刮 UI

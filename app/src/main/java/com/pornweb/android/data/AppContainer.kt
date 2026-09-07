@@ -165,6 +165,14 @@ class AppContainer(context: Context) {
         return resolveAssetPath(posterUrl)
     }
 
+    fun actorPhotoUrl(name: String?): String {
+        val n = name?.trim().orEmpty()
+        if (n.isEmpty()) return ""
+        val base = serverStore.normalizedBase()
+        val token = Uri.encode(tokenStore.token.orEmpty())
+        return "$base/api/actors/photo?name=${Uri.encode(n)}&token=$token"
+    }
+
     fun openExternalPlayer(context: Context, mediaId: Long, part: Int = 0, title: String? = null) {
         val url = streamUrl(mediaId, part)
         val intent = Intent(Intent.ACTION_VIEW).apply {

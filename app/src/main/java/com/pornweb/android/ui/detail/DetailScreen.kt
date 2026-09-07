@@ -2,11 +2,11 @@ package com.pornweb.android.ui.detail
 
 import android.content.ActivityNotFoundException
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -14,13 +14,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material3.Button
@@ -45,16 +50,19 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.pornweb.android.PornWebApp
+import com.pornweb.android.data.AppContainer
 import com.pornweb.android.data.MediaItem
 import com.pornweb.android.ui.theme.PwMuted
 import com.pornweb.android.ui.theme.PwPlaceholder
 import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DetailScreen(
     id: Long,
@@ -166,26 +174,29 @@ fun DetailScreen(
                     if (!media.director.isNullOrBlank()) {
                         Text("导演  ${media.director}", modifier = Modifier.padding(16.dp, 8.dp, 16.dp, 0.dp))
                     }
-                    val cast = media.parsedCast()
-                    if (cast.isNotEmpty()) {
-                        Text("演员", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 8.dp))
-                        FlowRow(
-                            modifier = Modifier.padding(horizontal = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            cast.forEach { actorName ->
-                                FilterChip(
-                                    selected = false,
-                                    onClick = { onOpenActor(actorName) },
-                                    label = { Text(actorName) }
-                                )
-                            }
-                        }
-                    }
                     if (!media.plot.isNullOrBlank()) {
                         Text("简介", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 4.dp))
                         Text(media.plot, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp))
+                    }
+                    val cast = media.parsedCast()
+                    if (cast.isNotEmpty()) {
+                        Text(
+                            "演员",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 8.dp)
+                        )
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(cast, key = { it }) { actorName ->
+                                CastAvatarItem(
+                                    name = actorName,
+                                    container = c,
+                                    onClick = { onOpenActor(actorName) }
+                                )
+                            }
+                        }
                     }
                     if (extras.size > 1) {
                         Text("分集", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 8.dp))
@@ -242,6 +253,78 @@ fun DetailScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CastAvatarItem(
+    name: String,
+    container: AppContainer,
+    onClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val photoUrl = remember(name) { container.actorPhotoUrl(name) }
+    val avatarSize = 80.dp
+    Column(
+        modifier = Modifier
+            .width(88.dp)
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(avatarSize)
+                .clip(CircleShape)
+                .background(PwPlaceholder),
+            contentAlignment = Alignment.Center
+        ) {
+            if (photoUrl.isBlank()) {
+                Icon(
+                    Icons.Default.Person,
+                    contentDescription = null,
+                    tint = PwMuted,
+                    modifier = Modifier.size(36.dp)
+                )
+            } else {
+                SubcomposeAsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(photoUrl)
+                        .crossfade(true)
+                        .build(),
+                    imageLoader = container.imageLoader,
+                    contentDescription = name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                    loading = {
+                        Icon(
+                            Icons.Default.Person,
+                            contentDescription = null,
+                            tint = PwMuted,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    },
+                    error = {
+                        Icon(
+                            Icons.Default.Person,
+                            contentDescription = null,
+                            tint = PwMuted,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+                )
+            }
+        }
+        Text(
+            text = name,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 6.dp)
+        )
     }
 }
 
