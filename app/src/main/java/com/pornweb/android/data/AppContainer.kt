@@ -136,14 +136,10 @@ class AppContainer(context: Context) {
         if (item == null) return ""
         val id = item.mediaId()
         if (id <= 0L) return ""
-        val raw = if (kind == "fanart") item.fanartUrl else item.posterUrl
-        // Absolute remote URLs: keep them. Relative /media/... paths 404 on nginx —
-        // always use the authenticated API endpoints instead.
-        if (!raw.isNullOrBlank() && (raw.startsWith("http://") || raw.startsWith("https://"))) {
-            return appendToken(raw)
-        }
+        // Always use same-origin /api/media/{poster|fanart}/{id} (server proxies
+        // Douban/TMDB). Loading external scrape URLs directly fails hotlink checks.
         return if (kind == "fanart") {
-            // Fanart is optional; fall back to poster if missing.
+            val raw = item.fanartUrl
             if (raw.isNullOrBlank()) posterUrl(id) else fanartUrl(id)
         } else {
             posterUrl(id)
