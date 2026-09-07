@@ -10,11 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -31,7 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.pornweb.android.PornWebApp
 import com.pornweb.android.data.ServerStore
-import com.pornweb.android.ui.theme.PwAccent
+import com.pornweb.android.ui.components.BrandLogo
 import kotlinx.coroutines.launch
 
 @Composable
@@ -76,9 +73,8 @@ fun ServerConnectScreen(onConnected: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = PwAccent, modifier = Modifier.size(64.dp))
-        Text("PornWeb", style = MaterialTheme.typography.headlineLarge, color = PwAccent)
-        Text("连接媒体服务器", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
+        BrandLogo(size = 36.dp, breathe = false)
+        Text("连接媒体服务器", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp))
         Spacer(Modifier.height(28.dp))
         OutlinedTextField(
             value = url,

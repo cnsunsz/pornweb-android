@@ -139,7 +139,17 @@ fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit, onPlayback
         if (message != null) Text(message!!, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 12.dp))
         if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 12.dp))
         Spacer(Modifier.height(24.dp))
-        Text("PornWeb Android  ${BuildConfig.VERSION_NAME}", color = PwMuted, style = MaterialTheme.typography.bodySmall)
+        Text(
+            "PornWeb Android ${BuildConfig.VERSION_NAME}",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Text(
+            "视觉 v2.0.1 管站风",
+            color = PwMuted,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp)
+        )
     }
 }
 

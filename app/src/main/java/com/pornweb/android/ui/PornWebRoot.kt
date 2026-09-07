@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,7 +40,9 @@ import com.pornweb.android.ui.player.PlayerScreen
 import com.pornweb.android.ui.search.SearchScreen
 import com.pornweb.android.ui.settings.PlaybackSettingsScreen
 import com.pornweb.android.ui.settings.SettingsScreen
+import com.pornweb.android.ui.theme.PwAccent
 import com.pornweb.android.ui.theme.PwBg
+import com.pornweb.android.ui.theme.PwSurface
 import kotlinx.coroutines.flow.collectLatest
 
 private data class Tab(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
@@ -86,10 +89,15 @@ fun PornWebRoot() {
         containerColor = PwBg,
         bottomBar = {
             if (isTab(current)) {
-                NavigationBar {
+                NavigationBar(containerColor = PwSurface) {
                     tabs.forEach { tab ->
                         NavigationBarItem(
                             selected = if (tab.route == "library") current?.startsWith("library") == true else current == tab.route,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = PwAccent,
+                                selectedTextColor = PwAccent,
+                                indicatorColor = PwAccent.copy(alpha = 0.18f)
+                            ),
                             onClick = {
                                 if (tab.route == "home") {
                                     // library?folder=... sits on top of home; launchSingleTop
