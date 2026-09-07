@@ -3,133 +3,118 @@
 [![Android CI](https://github.com/cnsunsz/pornweb-android/actions/workflows/android.yml/badge.svg)](https://github.com/cnsunsz/pornweb-android/actions/workflows/android.yml)
 [![GitHub release](https://img.shields.io/github/v/release/cnsunsz/pornweb-android)](https://github.com/cnsunsz/pornweb-android/releases)
 
-仓库：<https://github.com/cnsunsz/pornweb-android>（公开）
+Repo: <https://github.com/cnsunsz/pornweb-android> (public)
 
+---
 
-自托管成人媒体库 **PornWeb** 的原生 Android 客户端（Kotlin + Jetpack Compose + Media3 ExoPlayer）。界面参考 Emby / Jellyfin 手机端：深色影院风、海报墙、继续观看、详情与播放器。
+## 简介 / Overview
 
-- 包名：`com.pornweb.android`
-- 应用名：PornWeb
-- minSdk 26 / targetSdk 35 / compileSdk 35
-- 默认界面语言：简体中文
-- 默认服务器：`http://web.cnsun.top:2052`（可在「连接服务器」或「我的」中修改）
-- **不会**内置任何用户名或密码
+**中文：** 自托管媒体库 [PornWeb](https://github.com/cnsunsz/pornweb) 的原生 Android 客户端（Kotlin + Jetpack Compose + Media3 ExoPlayer）。深色管站风 UI，海报墙、继续观看、演员、详情与内置播放器；也可调起系统/第三方外部播放器（VLC、MX 等）。
 
-## 环境要求
+**English:** Native Android client for the self-hosted [PornWeb](https://github.com/cnsunsz/pornweb) media library (Kotlin + Jetpack Compose + Media3 ExoPlayer). Dark tube-style UI with cover wall, continue watching, actors, details, and built-in player — plus Emby-style **external player** via the system chooser (VLC, MX Player, system player, etc.).
 
-- JDK 17 或 21（本仓库用 JDK 21 构建通过）
-- Android SDK：`platform-tools`、`platforms;android-35`、`build-tools;35.0.0`
-- Android Studio Ladybug / Koala 及以上，或仅用命令行 Gradle Wrapper 8.9
+| | |
+| --- | --- |
+| Package / 包名 | `com.pornweb.android` |
+| App name | PornWeb |
+| SDK | min 26 · target/compile 35 |
+| Default UI language | 简体中文 |
+| Default server | `http://web.cnsun.top:2052` (editable in Connect / Me) |
+| Credentials | **Never** baked into the APK |
 
-将 SDK 路径写入 `local.properties`（不要提交到 git）：
+Related fixed-server build (no server picker): [`pornweb-android-fixed`](https://github.com/cnsunsz/pornweb-android-fixed).
+
+---
+
+## Features / 功能
+
+- Home cover wall, libraries, search, actors grid  
+- Actor photos: load only when API returns `/api/actors/photo?name=…`; otherwise leave blank (no work-poster fallback) — aligned with web **v2.1.6**  
+- Detail + built-in ExoPlayer (gestures, long-press speed, resume)  
+- **External player**: open the stream URL with another app (not a second built-in player)  
+- Playback settings (speed, skip, swipe, resume, …)  
+- Stable signing from **v1.0.5+** for overlay updates  
+
+---
+
+## Requirements / 环境
+
+- JDK 17 or 21 (CI uses 21)
+- Android SDK: `platform-tools`, `platforms;android-35`, `build-tools;35.0.0`
+- Android Studio Ladybug/Koala+ or Gradle Wrapper 8.9
+
+`local.properties` (do not commit):
 
 ```
 sdk.dir=/opt/android-sdk
 ```
 
-macOS / Windows 示例：
+---
 
-```
-sdk.dir=/Users/你的用户名/Library/Android/sdk
-sdk.dir=C:\\Users\\你的用户名\\AppData\\Local\\Android\\Sdk
-```
-
-也可设置环境变量 `ANDROID_HOME` / `ANDROID_SDK_ROOT`。
-
-## 用 Android Studio 打开
-
-1. 安装 [Android Studio](https://developer.android.com/studio)，安装 SDK Platform 35 与 Build-Tools 35.0.0。
-2. **File → Open**，选择本目录 `pornweb-android`。
-3. 等待 Gradle Sync。若提示 SDK 路径，指向本机 Android SDK。
-4. 连接手机或启动模拟器，点击 Run。首次安装需允许「未知来源」或通过 USB 调试。
-
-命令行同步：
+## Build / 编译
 
 ```bash
-./gradlew :app:assembleDebug
-```
-
-## 命令行编译 Debug APK
-
-在项目根目录：
-
-```bash
-export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64   # 按本机 JDK 修改
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64   # adjust to your JDK
 export ANDROID_HOME=/opt/android-sdk
 ./gradlew :app:assembleDebug
-```
-
-成功后 APK 位于：
-
-- `app/build/outputs/apk/debug/app-debug.apk`
-- 根目录副本：`PornWeb-debug.apk`
-
-安装到手机：
-
-```bash
+# APK: app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-或把 `PornWeb-debug.apk` 拷到手机后直接打开安装（需允许未知来源）。
+Or open the folder in Android Studio → Sync → Run.
 
-## 如何指向你的服务器
+---
 
-1. 首次启动进入 **连接服务器**，地址栏已预填 `http://web.cnsun.top:2052`。
-2. 点「测试连接」确认 `GET /api/health` 正常，再点「连接」。
-3. 使用你自己的用户名/密码登录（或注册，密码至少 6 位）。
-4. 之后可在底部 **我的** 修改服务器 URL 并保存。
+## Connect your server / 连接服务器
 
-本应用允许明文 HTTP（`usesCleartextTraffic` + `network_security_config`），可直连 `http://IP:端口` 的自建实例。Token 会同时放在：
+1. First launch → **Connect server** (prefilled `http://web.cnsun.top:2052`).
+2. Test `GET /api/health`, then Connect.
+3. Login / register with your own account (password ≥ 6 chars).
+4. Change the URL anytime under **Me**.
 
-- 请求头 `Authorization: Bearer <token>`
-- 海报 / 封面 / 视频流 URL 查询参数 `token=`
+Cleartext HTTP is allowed. Auth uses `Authorization: Bearer` plus `token=` on poster/stream URLs.
 
-## 界面
+---
 
-| 屏幕 | 说明 |
+## Screens / 界面
+
+| Screen | 说明 / Notes |
 | --- | --- |
-| 连接服务器 | 填写 URL、测试、连接 |
-| 登录 / 注册 | 保存 token（优先 EncryptedSharedPreferences） |
-| 首页 | 继续观看、媒体库磁贴、最近添加 |
-| 媒体库 | 海报网格、分页、下拉刷新、排序、类型/目录筛选 |
-| 搜索 | 300ms 防抖，`search=` 参数 |
-| 详情 | 背景、海报、元数据、播放 / 继续 / 从头 |
-| 播放器 | Media3 ExoPlayer，全屏、熄屏锁定、进度上报（约 10 秒及暂停） |
-| 我的 | 用户名、服务器地址、改密、退出 |
+| Connect | Server URL, health check |
+| Login / Register | Token in EncryptedSharedPreferences |
+| Home | Continue + dense cover wall + libraries |
+| Libraries | Grid, paging, sort/filter |
+| Actors | Searchable grid; photo only if API provides it |
+| Search | Debounced `search=` |
+| Detail | Metadata, cast chips, play / resume / **external player** |
+| Player | ExoPlayer + external-player shortcut |
+| Me / Playback settings | Server, password, player prefs |
 
-底部导航：**首页 / 媒体库 / 搜索 / 我的**。
+Bottom tabs: **Home · Libraries · Actors · Search · Me**.
 
-## 网络说明
+---
 
-列表与详情超时约 60–90 秒。播放使用独立的 ExoPlayer HTTP 数据源（带 Bearer 头）。若服务端返回 401（登录/注册除外），会清除 token 并回到登录页。
+## Releases / 发行
 
-## GitHub 编译发行
-
-推送到 `main` 或提交 PR 会跑 [Android CI](https://github.com/cnsunsz/pornweb-android/actions)：自动编 debug / release APK，并作为 Actions Artifact 上传。
-
-打 tag 会同时发 GitHub Release（APK 挂在发行页）：
+Push to `main` or tag `v*` → [Android CI](https://github.com/cnsunsz/pornweb-android/actions) builds debug/release APKs. Tags also create GitHub Releases (notes from `CHANGELOG.md`).
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.0.13
+git push origin v1.0.13
 ```
 
-也可在 Actions 页手动 **Run workflow**。
+**Overlay install:** from v1.0.5 onward, debug/release share a fixed project keystore (`keystore/pornweb.jks`). Upgrading from ≤1.0.4 requires one uninstall first.
 
-默认 release APK 用 debug 密钥签名，方便直接安装。若要正式签名，在仓库 Settings → Secrets and variables → Actions 里添加：
+Optional CI secrets for a custom keystore: `SIGNING_STORE_BASE64`, `SIGNING_STORE_PASSWORD`, `SIGNING_KEY_ALIAS`, `SIGNING_KEY_PASSWORD`.
 
-- `SIGNING_STORE_BASE64`：keystore 文件的 base64
-- `SIGNING_STORE_PASSWORD`
-- `SIGNING_KEY_ALIAS`
-- `SIGNING_KEY_PASSWORD`
+---
 
+## Changelog
 
-## 覆盖安装（签名）
+See [CHANGELOG.md](./CHANGELOG.md) (Chinese release notes per version).
 
-从 **v1.0.5** 起，debug / release APK 都使用仓库内固定的 `keystore/pornweb.jks` 签名，因此后续版本可以直接覆盖安装，不必先卸载。
+---
 
-若手机上已安装 **v1.0.4 及更早**（当时 GitHub Actions 用的是临时 debug 签名），第一次装 1.0.5 仍需卸载旧包一次；之后就都可覆盖更新。
-
-## 许可证
+## License / 许可证
 
 MIT
