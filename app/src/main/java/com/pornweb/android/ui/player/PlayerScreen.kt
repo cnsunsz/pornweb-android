@@ -72,7 +72,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.pornweb.android.BuildConfig
 import com.pornweb.android.PornWebApp
+import com.pornweb.android.ui.theme.PwAccent
 import com.pornweb.android.R
 import com.pornweb.android.data.ExtraFile
 import com.pornweb.android.data.ProgressRequest
@@ -212,7 +214,7 @@ private fun PlayerBody(
             .followSslRedirects(true)
             .build()
         val factory = OkHttpDataSource.Factory(okHttp)
-            .setUserAgent("PornWeb-Android/1.0.6")
+            .setUserAgent("PornWeb-Android/${BuildConfig.VERSION_NAME}")
             .setDefaultRequestProperties(
                 buildMap {
                     if (token.isNotBlank()) put("Authorization", "Bearer $token")
@@ -651,7 +653,7 @@ private fun PlayerBody(
                                 .fillMaxWidth(barFraction)
                                 .height(2.dp)
                                 .clip(RoundedCornerShape(1.dp))
-                                .background(Color(0xFF22D3EE))
+                                .background(PwAccent)
                         )
                         Box(
                             Modifier
@@ -663,7 +665,7 @@ private fun PlayerBody(
                                 Modifier
                                     .size(8.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFF22D3EE))
+                                    .background(PwAccent)
                             )
                         }
                     }

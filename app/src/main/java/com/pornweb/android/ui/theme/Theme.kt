@@ -9,18 +9,18 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-val PwBg = Color(0xFF0B0D10)
-val PwSurface = Color(0xFF14171C)
-val PwSurfaceHigh = Color(0xFF1C2128)
-val PwAccent = Color(0xFF22D3EE)
-val PwAccentDim = Color(0xFF155E75)
-val PwOnBg = Color(0xFFF1F5F9)
-val PwMuted = Color(0xFF94A3B8)
-val PwPlaceholder = Color(0xFF2A3038)
+val PwBg = Color(0xFF050505)
+val PwSurface = Color(0xFF121212)
+val PwSurfaceHigh = Color(0xFF1A1A1A)
+val PwAccent = Color(0xFFFFA31A)
+val PwAccentDim = Color(0xFFE07A00)
+val PwOnBg = Color(0xFFF5F5F5)
+val PwMuted = Color(0xFF9CA3AF)
+val PwPlaceholder = Color(0xFF2A2A2A)
 
 private val DarkColors = darkColorScheme(
     primary = PwAccent,
-    onPrimary = Color(0xFF082F49),
+    onPrimary = Color(0xFF1A0F00),
     secondary = PwAccent,
     background = PwBg,
     onBackground = PwOnBg,
@@ -28,7 +28,7 @@ private val DarkColors = darkColorScheme(
     onSurface = PwOnBg,
     surfaceVariant = PwSurfaceHigh,
     onSurfaceVariant = PwMuted,
-    outline = Color(0xFF334155),
+    outline = Color(0xFF2A2A2A),
     error = Color(0xFFF87171)
 )
 

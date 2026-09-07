@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.pornweb.android.BuildConfig
 import com.pornweb.android.PornWebApp
 import com.pornweb.android.data.PasswordChangeRequest
 import com.pornweb.android.ui.theme.PwMuted
@@ -138,7 +139,7 @@ fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit, onPlayback
         if (message != null) Text(message!!, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 12.dp))
         if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 12.dp))
         Spacer(Modifier.height(24.dp))
-        Text("PornWeb Android  1.0.6", color = PwMuted, style = MaterialTheme.typography.bodySmall)
+        Text("PornWeb Android  ${BuildConfig.VERSION_NAME}", color = PwMuted, style = MaterialTheme.typography.bodySmall)
     }
 }
 

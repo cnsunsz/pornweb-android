@@ -38,6 +38,7 @@ import coil.request.ImageRequest
 import com.pornweb.android.PornWebApp
 import com.pornweb.android.data.LibraryItem
 import com.pornweb.android.data.MediaItem
+import com.pornweb.android.ui.components.BrandLogo
 import com.pornweb.android.ui.components.PosterCard
 import com.pornweb.android.ui.theme.PwMuted
 import com.pornweb.android.ui.theme.PwPlaceholder
@@ -94,11 +95,9 @@ fun HomeScreen(onOpenMedia: (Long) -> Unit, onOpenLibrary: (String?) -> Unit) {
             contentPadding = PaddingValues(bottom = 24.dp)
         ) {
             item {
-                Text(
-                    "PornWeb",
-                    style = MaterialTheme.typography.headlineMedium,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                )
+                Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    BrandLogo(size = 26.dp, breathe = false)
+                }
             }
             if (error != null) {
                 item {
