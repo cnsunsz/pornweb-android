@@ -4,8 +4,11 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.graphics.Typeface
+import android.net.Uri
 import android.view.LayoutInflater
 import android.view.WindowManager
+import android.graphics.Color as AndroidColor
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -26,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.LockOpen
@@ -33,6 +37,8 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -64,8 +70,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -73,6 +81,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import com.pornweb.android.BuildConfig
 import com.pornweb.android.PornWebApp
@@ -80,6 +89,7 @@ import com.pornweb.android.ui.theme.PwAccent
 import com.pornweb.android.R
 import com.pornweb.android.data.ExtraFile
 import com.pornweb.android.data.ProgressRequest
+import com.pornweb.android.data.SubtitleTrack
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -199,6 +209,10 @@ private fun PlayerBody(
     val token = c.tokenStore.token.orEmpty()
     val startMsState = rememberUpdatedState(startPositionMs)
 
+    var subtitleTracks by remember { mutableStateOf<List<SubtitleTrack>>(emptyList()) }
+    var selectedTrackId by remember { mutableStateOf<String?>(null) }
+    var showSubtitleMenu by remember { mutableStateOf(false) }
+
     val defaultSpeed = prefs.defaultSpeed
     val longPressSpeed = prefs.longPressSpeed
     val skipMs = prefs.skipSeconds * 1000L
@@ -241,6 +255,60 @@ private fun PlayerBody(
                 setPlaybackSpeed(defaultSpeed)
                 videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
             }
+    }
+
+    fun applySubtitleSelection(trackId: String?) {
+        selectedTrackId = trackId
+        if (trackId == null) {
+            player.trackSelectionParameters = player.trackSelectionParameters
+                .buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                .build()
+            return
+        }
+        val groups = player.currentTracks.groups
+        for (gi in 0 until groups.size) {
+            val group = groups[gi]
+            if (group.type != C.TRACK_TYPE_TEXT) continue
+            for (j in 0 until group.length) {
+                val format = group.getTrackFormat(j)
+                if (format.id == trackId || format.label == trackId) {
+                    player.trackSelectionParameters = player.trackSelectionParameters
+                        .buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                        .addOverride(TrackSelectionOverride(group.mediaTrackGroup, listOf(j)))
+                        .build()
+                    return
+                }
+            }
+        }
+        val track = subtitleTracks.find { it.trackId() == trackId }
+        val lang = track?.language?.takeIf { it.isNotBlank() }
+        val builder = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+        if (lang != null) builder.setPreferredTextLanguage(lang)
+        player.trackSelectionParameters = builder.build()
+    }
+
+    fun buildMediaItem(): MediaItem {
+        val builder = MediaItem.Builder().setUri(url)
+        val configs = subtitleTracks.mapNotNull { track ->
+            val tid = track.trackId()
+            if (tid.isBlank()) return@mapNotNull null
+            MediaItem.SubtitleConfiguration.Builder(Uri.parse(c.subtitleUrl(id, tid, part)))
+                .setMimeType(MimeTypes.TEXT_VTT)
+                .setLanguage(track.language?.takeIf { it.isNotBlank() })
+                .setLabel(track.label ?: track.language ?: tid)
+                .setId(tid)
+                .build()
+        }
+        if (configs.isNotEmpty()) {
+            builder.setSubtitleConfigurations(configs)
+        }
+        return builder.build()
     }
 
     var controlsVisible by remember { mutableStateOf(true) }
@@ -295,17 +363,35 @@ private fun PlayerBody(
         }
     }
 
-    LaunchedEffect(url) {
+    LaunchedEffect(id, part) {
+        try {
+            val resp = c.api.subtitles(id, part)
+            subtitleTracks = resp.tracks.orEmpty().filter { it.trackId().isNotBlank() }
+        } catch (_: Exception) {
+            subtitleTracks = emptyList()
+        }
+        selectedTrackId = null
+    }
+
+    LaunchedEffect(url, subtitleTracks) {
         playError = null
-        player.setMediaItem(MediaItem.fromUri(url))
+        val keepPos = player.currentPosition.takeIf { it > 0 && player.mediaItemCount > 0 } ?: 0L
+        val start = if (keepPos > 0) keepPos else startMsState.value
+        player.setMediaItem(buildMediaItem())
         player.prepare()
-        val start = startMsState.value
         if (start > 0) player.seekTo(start)
         player.setPlaybackSpeed(defaultSpeed)
+        // Default: text tracks off until the user picks one from 「字幕」
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, selectedTrackId == null)
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .build()
+        player.playWhenReady = true
         player.play()
     }
 
-    DisposableEffect(player, id, part) {
+    DisposableEffect(player, id, part, subtitleTracks) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 buffering = playbackState == Player.STATE_BUFFERING
@@ -317,6 +403,19 @@ private fun PlayerBody(
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 playing = isPlaying
                 if (!isPlaying) saveProgress(c, id, part, player)
+            }
+
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                val tid = selectedTrackId
+                if (tid != null) {
+                    applySubtitleSelection(tid)
+                } else {
+                    player.trackSelectionParameters = player.trackSelectionParameters
+                        .buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                        .build()
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -382,6 +481,20 @@ private fun PlayerBody(
                 view.useController = false
                 view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                 view.keepScreenOn = true
+                view.subtitleView?.apply {
+                    setApplyEmbeddedStyles(false)
+                    setStyle(
+                        CaptionStyleCompat(
+                            AndroidColor.WHITE,
+                            AndroidColor.TRANSPARENT,
+                            AndroidColor.TRANSPARENT,
+                            CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                            AndroidColor.BLACK,
+                            Typeface.DEFAULT_BOLD
+                        )
+                    )
+                    setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f)
+                }
                 view
             },
             update = { it.player = player },
@@ -587,6 +700,60 @@ private fun PlayerBody(
                             controlsVisible = true
                         }) {
                             Icon(Icons.Default.OpenInNew, contentDescription = "外部播放", tint = Color.White)
+                        }
+                        Box {
+                            IconButton(onClick = {
+                                showSubtitleMenu = true
+                                controlsVisible = true
+                            }) {
+                                Icon(
+                                    Icons.Default.ClosedCaption,
+                                    contentDescription = "字幕",
+                                    tint = if (selectedTrackId != null) PwAccent else Color.White
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showSubtitleMenu,
+                                onDismissRequest = { showSubtitleMenu = false }
+                            ) {
+                                if (subtitleTracks.isEmpty()) {
+                                    DropdownMenuItem(
+                                        text = { Text("无字幕") },
+                                        onClick = { showSubtitleMenu = false },
+                                        enabled = false
+                                    )
+                                } else {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                "关闭",
+                                                color = if (selectedTrackId == null) PwAccent else Color.Unspecified
+                                            )
+                                        },
+                                        onClick = {
+                                            applySubtitleSelection(null)
+                                            showSubtitleMenu = false
+                                            controlsVisible = true
+                                        }
+                                    )
+                                    subtitleTracks.forEach { track ->
+                                        val tid = track.trackId()
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    track.displayLabel(),
+                                                    color = if (selectedTrackId == tid) PwAccent else Color.Unspecified
+                                                )
+                                            },
+                                            onClick = {
+                                                applySubtitleSelection(tid)
+                                                showSubtitleMenu = false
+                                                controlsVisible = true
+                                            }
+                                        )
+                                    }
+                                }
+                            }
                         }
                         IconButton(onClick = onOpenSettings) {
                             Icon(Icons.Default.Settings, contentDescription = "播放设置", tint = Color.White)

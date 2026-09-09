@@ -8,4 +8,4 @@
     app:keep_content_on_player_reset="true"
     app:show_buffering="when_playing"
     app:surface_type="texture_view"
-    app:use_controller="false" />
+    app:use_controller="true" />

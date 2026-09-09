@@ -63,6 +63,12 @@ interface ApiService {
         @Query("sort") sort: String? = "newest"
     ): MediaListResponse
 
+    @GET("api/media/subtitles/{id}")
+    suspend fun subtitles(
+        @Path("id") id: Long,
+        @Query("part") part: Int = 0
+    ): SubtitleListResponse
+
     @PUT("api/users/me/password")
     suspend fun changePassword(@Body body: PasswordChangeRequest): Response<Unit>
 }

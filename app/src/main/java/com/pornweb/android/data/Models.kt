@@ -162,3 +162,36 @@ data class ActorListResponse(
     val total: Int? = null
 )
 
+
+data class SubtitleTrack(
+    val id: JsonElement? = null,
+    val label: String? = null,
+    val language: String? = null,
+    val format: String? = null,
+    /** `external` or `embedded` */
+    val source: String? = null,
+    val index: Int? = null
+) {
+    fun trackId(): String {
+        val el = id ?: return ""
+        if (!el.isJsonPrimitive) return el.toString()
+        val p = el.asJsonPrimitive
+        return if (p.isNumber) p.asNumber.toString() else p.asString
+    }
+
+    fun displayLabel(): String {
+        val primary = label?.trim()?.takeIf { it.isNotEmpty() }
+        val lang = language?.trim()?.takeIf { it.isNotEmpty() && it != primary }
+        val base = listOfNotNull(primary, lang).joinToString(" · ").ifBlank { "字幕 ${trackId()}" }
+        val src = when (source?.lowercase()) {
+            "external" -> "外挂"
+            "embedded" -> "内嵌"
+            else -> source?.trim()?.takeIf { it.isNotEmpty() }
+        }
+        return if (src != null) "$base（$src）" else base
+    }
+}
+
+data class SubtitleListResponse(
+    val tracks: List<SubtitleTrack>? = null
+)
