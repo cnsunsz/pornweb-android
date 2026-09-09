@@ -244,7 +244,7 @@ private fun PlayerBody(
             .setEnableDecoderFallback(true)
             .setEnableAudioFloatOutput(true)
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(50_000, 120_000, 2_500, 5_000)
+            .setBufferDurationsMs(20_000, 120_000, 2_500, 5_000)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
         ExoPlayer.Builder(context)
@@ -256,11 +256,62 @@ private fun PlayerBody(
                 playWhenReady = true
                 setPlaybackSpeed(defaultSpeed)
                 videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+                // Prefer widely-decodable audio before DTS/TrueHD (often silent on MediaCodec).
+                trackSelectionParameters = trackSelectionParameters
+                    .buildUpon()
+                    .setPreferredAudioMimeTypes(
+                        MimeTypes.AUDIO_AAC,
+                        MimeTypes.AUDIO_AC3,
+                        MimeTypes.AUDIO_E_AC3,
+                        MimeTypes.AUDIO_OPUS,
+                        MimeTypes.AUDIO_FLAC,
+                        MimeTypes.AUDIO_MPEG
+                    )
+                    .build()
             }
     }
 
-    fun applySubtitleSelection(trackId: String?) {
-        selectedTrackId = trackId
+    fun buildMediaItem(): MediaItem {
+        val builder = MediaItem.Builder().setUri(url)
+        // Lazy: only side-load the currently selected supported track (avoids dozens of VTT fetches).
+        val tid = selectedTrackId
+        if (!tid.isNullOrBlank()) {
+            val track = subtitleTracks.find { it.trackId() == tid }
+            if (track != null && track.isSupported()) {
+                builder.setSubtitleConfigurations(
+                    listOf(
+                        MediaItem.SubtitleConfiguration.Builder(Uri.parse(c.subtitleUrl(id, tid, part)))
+                            .setMimeType(MimeTypes.TEXT_VTT)
+                            .setLanguage(track.language?.takeIf { it.isNotBlank() })
+                            .setLabel(track.label ?: track.language ?: tid)
+                            .setId(tid)
+                            .build()
+                    )
+                )
+            }
+        }
+        return builder.build()
+    }
+
+    fun reloadMediaKeepingPosition() {
+        val keepPos = player.currentPosition.takeIf { it > 0 && player.mediaItemCount > 0 } ?: 0L
+        val start = if (keepPos > 0) keepPos else startMsState.value
+        player.setMediaItem(buildMediaItem())
+        player.prepare()
+        if (start > 0) player.seekTo(start)
+        player.setPlaybackSpeed(defaultSpeed)
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, selectedTrackId == null)
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .build()
+        player.playWhenReady = true
+        player.play()
+    }
+
+    /** Apply text-track override for the already-attached selected subtitle (no MediaItem rebuild). */
+    fun enableSelectedTextTrack() {
+        val trackId = selectedTrackId
         if (trackId == null) {
             player.trackSelectionParameters = player.trackSelectionParameters
                 .buildUpon()
@@ -295,22 +346,20 @@ private fun PlayerBody(
         player.trackSelectionParameters = builder.build()
     }
 
-    fun buildMediaItem(): MediaItem {
-        val builder = MediaItem.Builder().setUri(url)
-        val configs = subtitleTracks.mapNotNull { track ->
-            val tid = track.trackId()
-            if (!track.isSupported() || tid.isBlank()) return@mapNotNull null
-            MediaItem.SubtitleConfiguration.Builder(Uri.parse(c.subtitleUrl(id, tid, part)))
-                .setMimeType(MimeTypes.TEXT_VTT)
-                .setLanguage(track.language?.takeIf { it.isNotBlank() })
-                .setLabel(track.label ?: track.language ?: tid)
-                .setId(tid)
-                .build()
+    /** User picked a subtitle (or cleared). Rebuild MediaItem so only one VTT is side-loaded. */
+    fun applySubtitleSelection(trackId: String?) {
+        if (trackId == null) {
+            selectedTrackId = null
+            // Drop side-loaded VTT and keep playback position.
+            reloadMediaKeepingPosition()
+            return
         }
-        if (configs.isNotEmpty()) {
-            builder.setSubtitleConfigurations(configs)
+        if (trackId == selectedTrackId) {
+            enableSelectedTextTrack()
+            return
         }
-        return builder.build()
+        selectedTrackId = trackId
+        reloadMediaKeepingPosition()
     }
 
     var controlsVisible by remember { mutableStateOf(true) }
@@ -375,25 +424,12 @@ private fun PlayerBody(
         } finally {
             subtitleTracksLoading = false
         }
-        selectedTrackId = null
     }
 
-    LaunchedEffect(url, subtitleTracks) {
+    LaunchedEffect(url) {
         playError = null
-        val keepPos = player.currentPosition.takeIf { it > 0 && player.mediaItemCount > 0 } ?: 0L
-        val start = if (keepPos > 0) keepPos else startMsState.value
-        player.setMediaItem(buildMediaItem())
-        player.prepare()
-        if (start > 0) player.seekTo(start)
-        player.setPlaybackSpeed(defaultSpeed)
-        // Default: text tracks off until the user picks one from 「字幕」
-        player.trackSelectionParameters = player.trackSelectionParameters
-            .buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, selectedTrackId == null)
-            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-            .build()
-        player.playWhenReady = true
-        player.play()
+        selectedTrackId = null
+        reloadMediaKeepingPosition()
     }
 
     DisposableEffect(player, id, part, subtitleTracks) {
@@ -411,20 +447,25 @@ private fun PlayerBody(
             }
 
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
-                val tid = selectedTrackId
-                if (tid != null) {
-                    applySubtitleSelection(tid)
-                } else {
-                    player.trackSelectionParameters = player.trackSelectionParameters
-                        .buildUpon()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                        .build()
-                }
+                enableSelectedTextTrack()
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                playError = error.message ?: "播放失败 (${error.errorCode})"
+                val raw = listOfNotNull(error.message, error.cause?.message).joinToString(" ")
+                val lower = raw.lowercase()
+                playError = if (
+                    "audio" in lower ||
+                    "decoder" in lower ||
+                    "soundtrack" in lower ||
+                    error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+                    error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED ||
+                    error.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED ||
+                    error.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED
+                ) {
+                    "音轨解码失败，可试外部播放器"
+                } else {
+                    error.message ?: "播放失败 (${error.errorCode})"
+                }
                 controlsVisible = true
             }
         }
@@ -740,7 +781,7 @@ private fun PlayerBody(
                                         DropdownMenuItem(
                                             text = {
                                                 Text(
-                                                    "关闭",
+                                                    "无字幕",
                                                     color = if (selectedTrackId == null) PwAccent else Color.Unspecified
                                                 )
                                             },
