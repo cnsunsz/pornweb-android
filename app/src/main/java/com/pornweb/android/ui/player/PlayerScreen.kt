@@ -8,6 +8,7 @@ import android.graphics.Typeface
 import android.net.Uri
 import android.view.LayoutInflater
 import android.view.WindowManager
+import android.widget.Toast
 import android.graphics.Color as AndroidColor
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -210,6 +211,7 @@ private fun PlayerBody(
     val startMsState = rememberUpdatedState(startPositionMs)
 
     var subtitleTracks by remember { mutableStateOf<List<SubtitleTrack>>(emptyList()) }
+    var subtitleTracksLoading by remember { mutableStateOf(false) }
     var selectedTrackId by remember { mutableStateOf<String?>(null) }
     var showSubtitleMenu by remember { mutableStateOf(false) }
 
@@ -297,7 +299,7 @@ private fun PlayerBody(
         val builder = MediaItem.Builder().setUri(url)
         val configs = subtitleTracks.mapNotNull { track ->
             val tid = track.trackId()
-            if (tid.isBlank()) return@mapNotNull null
+            if (!track.isSupported() || tid.isBlank()) return@mapNotNull null
             MediaItem.SubtitleConfiguration.Builder(Uri.parse(c.subtitleUrl(id, tid, part)))
                 .setMimeType(MimeTypes.TEXT_VTT)
                 .setLanguage(track.language?.takeIf { it.isNotBlank() })
@@ -364,11 +366,14 @@ private fun PlayerBody(
     }
 
     LaunchedEffect(id, part) {
+        subtitleTracksLoading = true
         try {
             val resp = c.api.subtitles(id, part)
             subtitleTracks = resp.tracks.orEmpty().filter { it.trackId().isNotBlank() }
         } catch (_: Exception) {
             subtitleTracks = emptyList()
+        } finally {
+            subtitleTracksLoading = false
         }
         selectedTrackId = null
     }
@@ -716,41 +721,65 @@ private fun PlayerBody(
                                 expanded = showSubtitleMenu,
                                 onDismissRequest = { showSubtitleMenu = false }
                             ) {
-                                if (subtitleTracks.isEmpty()) {
-                                    DropdownMenuItem(
-                                        text = { Text("无字幕") },
-                                        onClick = { showSubtitleMenu = false },
-                                        enabled = false
-                                    )
-                                } else {
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                "关闭",
-                                                color = if (selectedTrackId == null) PwAccent else Color.Unspecified
-                                            )
-                                        },
-                                        onClick = {
-                                            applySubtitleSelection(null)
-                                            showSubtitleMenu = false
-                                            controlsVisible = true
-                                        }
-                                    )
-                                    subtitleTracks.forEach { track ->
-                                        val tid = track.trackId()
+                                when {
+                                    subtitleTracksLoading -> {
+                                        DropdownMenuItem(
+                                            text = { Text("加载字幕…") },
+                                            onClick = { },
+                                            enabled = false
+                                        )
+                                    }
+                                    subtitleTracks.isEmpty() -> {
+                                        DropdownMenuItem(
+                                            text = { Text("无字幕") },
+                                            onClick = { showSubtitleMenu = false },
+                                            enabled = false
+                                        )
+                                    }
+                                    else -> {
                                         DropdownMenuItem(
                                             text = {
                                                 Text(
-                                                    track.displayLabel(),
-                                                    color = if (selectedTrackId == tid) PwAccent else Color.Unspecified
+                                                    "关闭",
+                                                    color = if (selectedTrackId == null) PwAccent else Color.Unspecified
                                                 )
                                             },
                                             onClick = {
-                                                applySubtitleSelection(tid)
+                                                applySubtitleSelection(null)
                                                 showSubtitleMenu = false
                                                 controlsVisible = true
                                             }
                                         )
+                                        subtitleTracks.forEach { track ->
+                                            val tid = track.trackId()
+                                            val supported = track.isSupported()
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Text(
+                                                        track.displayLabel(),
+                                                        color = when {
+                                                            !supported -> Color.Gray
+                                                            selectedTrackId == tid -> PwAccent
+                                                            else -> Color.Unspecified
+                                                        }
+                                                    )
+                                                },
+                                                enabled = supported,
+                                                onClick = {
+                                                    if (!supported) {
+                                                        Toast.makeText(
+                                                            context,
+                                                            "该轨暂不支持",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                        return@DropdownMenuItem
+                                                    }
+                                                    applySubtitleSelection(tid)
+                                                    showSubtitleMenu = false
+                                                    controlsVisible = true
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                             }

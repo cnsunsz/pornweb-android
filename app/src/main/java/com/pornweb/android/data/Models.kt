@@ -170,7 +170,10 @@ data class SubtitleTrack(
     val format: String? = null,
     /** `external` or `embedded` */
     val source: String? = null,
-    val index: Int? = null
+    val index: Int? = null,
+    /** false for e.g. PGS — do not side-load; null = treat as supported (older servers) */
+    val supported: Boolean? = null,
+    val unsupported_reason: String? = null
 ) {
     fun trackId(): String {
         val el = id ?: return ""
@@ -178,6 +181,8 @@ data class SubtitleTrack(
         val p = el.asJsonPrimitive
         return if (p.isNumber) p.asNumber.toString() else p.asString
     }
+
+    fun isSupported(): Boolean = supported != false
 
     fun displayLabel(): String {
         val primary = label?.trim()?.takeIf { it.isNotEmpty() }
@@ -188,7 +193,10 @@ data class SubtitleTrack(
             "embedded" -> "内嵌"
             else -> source?.trim()?.takeIf { it.isNotEmpty() }
         }
-        return if (src != null) "$base（$src）" else base
+        val labeled = if (src != null) "$base（$src）" else base
+        if (isSupported()) return labeled
+        val reason = unsupported_reason?.trim()?.takeIf { it.isNotEmpty() }
+        return if (reason != null) "$labeled「不支持 · $reason」" else "$labeled「不支持」"
     }
 }
 

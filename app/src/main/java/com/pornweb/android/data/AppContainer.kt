@@ -74,9 +74,9 @@ class AppContainer(context: Context) {
         .addInterceptor(authInterceptor)
         .addInterceptor(logging())
         .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(180, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
-        .callTimeout(90, TimeUnit.SECONDS)
+        .callTimeout(210, TimeUnit.SECONDS)
         .build()
 
     val streamClient: OkHttpClient = OkHttpClient.Builder()
