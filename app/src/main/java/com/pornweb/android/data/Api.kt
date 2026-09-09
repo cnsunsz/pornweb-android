@@ -69,6 +69,13 @@ interface ApiService {
         @Query("part") part: Int = 0
     ): SubtitleListResponse
 
+    @GET("api/media/subtitles/{id}/{track_id}/status")
+    suspend fun subtitleStatus(
+        @Path("id") id: Long,
+        @Path("track_id") trackId: String,
+        @Query("part") part: Int = 0
+    ): SubtitleStatusResponse
+
     @PUT("api/users/me/password")
     suspend fun changePassword(@Body body: PasswordChangeRequest): Response<Unit>
 }

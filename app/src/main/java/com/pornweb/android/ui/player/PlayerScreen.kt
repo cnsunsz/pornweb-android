@@ -375,20 +375,17 @@ private fun PlayerBody(
             .build()
     }
 
-    /** Download VTT off the player path; returns local file Uri or null. */
+    /**
+     * Download VTT off the player path (prefer async=1 /status per web v2.1.14).
+     * Returns local file:// Uri or null. Older servers that ignore async and return 200 still work.
+     */
     suspend fun prefetchSubtitleVtt(trackId: String): Uri? = withContext(Dispatchers.IO) {
         val dest = subtitleCacheFile(trackId)
         if (dest.isFile && dest.length() > 0L) {
             return@withContext Uri.fromFile(dest)
         }
-        val tmp = File(dest.absolutePath + ".tmp")
-        val req = Request.Builder()
-            .url(c.subtitleUrl(id, trackId, part))
-            .header("Accept", "text/vtt,*/*")
-            .get()
-            .build()
-        // Long timeouts like streamClient; plain client so Accept stays text/vtt
-        // (streamClient auth interceptor would force application/json). URL has token=.
+        // Plain client so Accept stays text/vtt (auth interceptor would force application/json).
+        // URL has token=.
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.SECONDS)
@@ -397,25 +394,77 @@ private fun PlayerBody(
             .followRedirects(true)
             .followSslRedirects(true)
             .build()
-        client.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) {
+
+        fun writeBodyToDest(bodyBytes: okhttp3.ResponseBody): Uri? {
+            val tmp = File(dest.absolutePath + ".tmp")
+            try {
+                tmp.outputStream().use { out -> bodyBytes.byteStream().copyTo(out) }
+                if (!tmp.isFile || tmp.length() <= 0L) {
+                    tmp.delete()
+                    return null
+                }
+                if (dest.exists()) dest.delete()
+                if (!tmp.renameTo(dest)) {
+                    tmp.copyTo(dest, overwrite = true)
+                    tmp.delete()
+                }
+                if (!dest.isFile || dest.length() <= 0L) return null
+                return Uri.fromFile(dest)
+            } catch (e: Exception) {
                 tmp.delete()
-                return@withContext null
+                throw e
             }
-            val body = resp.body ?: return@withContext null
-            tmp.outputStream().use { out -> body.byteStream().copyTo(out) }
         }
-        if (!tmp.isFile || tmp.length() <= 0L) {
-            tmp.delete()
-            return@withContext null
+
+        /** @return Pair(httpCode, uriOrNull). 202 → code 202 + null (preparing). */
+        fun fetchOnce(async: Boolean): Pair<Int, Uri?> {
+            val req = Request.Builder()
+                .url(c.subtitleUrl(id, trackId, part, async = async))
+                .header("Accept", "text/vtt,application/json,*/*")
+                .get()
+                .build()
+            client.newCall(req).execute().use { resp ->
+                val code = resp.code
+                if (code == 202) return code to null
+                if (!resp.isSuccessful) return code to null
+                val body = resp.body ?: return code to null
+                return code to writeBodyToDest(body)
+            }
         }
-        if (dest.exists()) dest.delete()
-        if (!tmp.renameTo(dest)) {
-            tmp.copyTo(dest, overwrite = true)
-            tmp.delete()
+
+        // Prefer async=1 (cached/external → 200 VTT; uncached embedded → 202 preparing).
+        val (code, uri) = fetchOnce(async = true)
+        if (uri != null) return@withContext uri
+
+        if (code == 202) {
+            val deadline = System.currentTimeMillis() + 120_000L
+            while (isActive && System.currentTimeMillis() < deadline) {
+                delay(1_250L)
+                if (!isActive) return@withContext null
+                val status = try {
+                    c.api.subtitleStatus(id, trackId, part).status?.trim()?.lowercase()
+                } catch (_: Exception) {
+                    null
+                }
+                when (status) {
+                    "ready" -> {
+                        val (_, readyUri) = fetchOnce(async = true)
+                        if (readyUri != null) return@withContext readyUri
+                        // ready but async fetch missed — try sync once
+                        val (_, syncUri) = fetchOnce(async = false)
+                        return@withContext syncUri
+                    }
+                    "error", "unavailable" -> return@withContext null
+                    // preparing | idle | unknown | null → keep polling
+                    else -> Unit
+                }
+            }
+            return@withContext null // timeout ~120s
         }
-        if (!dest.isFile || dest.length() <= 0L) return@withContext null
-        Uri.fromFile(dest)
+
+        // Fallback sync (older servers / unexpected non-202 failure with async).
+        val (_, syncUri) = fetchOnce(async = false)
+        syncUri
     }
 
     /** User picked a subtitle (or cleared). Prefetch VTT to cache, then attach local file:// once. */

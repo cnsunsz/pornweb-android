@@ -173,7 +173,9 @@ data class SubtitleTrack(
     val index: Int? = null,
     /** false for e.g. PGS — do not side-load; null = treat as supported (older servers) */
     val supported: Boolean? = null,
-    val unsupported_reason: String? = null
+    val unsupported_reason: String? = null,
+    /** true when VTT is already cached/ready on server (v2.1.14+) */
+    val cached: Boolean? = null
 ) {
     fun trackId(): String {
         val el = id ?: return ""
@@ -193,7 +195,8 @@ data class SubtitleTrack(
             "embedded" -> "内嵌"
             else -> source?.trim()?.takeIf { it.isNotEmpty() }
         }
-        val labeled = if (src != null) "$base（$src）" else base
+        var labeled = if (src != null) "$base（$src）" else base
+        if (cached == true) labeled = "$labeled · 已缓存"
         if (isSupported()) return labeled
         val reason = unsupported_reason?.trim()?.takeIf { it.isNotEmpty() }
         return if (reason != null) "$labeled「不支持 · $reason」" else "$labeled「不支持」"
@@ -202,4 +205,9 @@ data class SubtitleTrack(
 
 data class SubtitleListResponse(
     val tracks: List<SubtitleTrack>? = null
+)
+
+/** GET /api/media/subtitles/{id}/{track_id}/status — status: ready|preparing|error|unavailable|idle */
+data class SubtitleStatusResponse(
+    val status: String? = null
 )

@@ -133,11 +133,19 @@ class AppContainer(context: Context) {
         return "$base/api/media/stream/$id?token=$token&part=$part"
     }
 
-    fun subtitleUrl(id: Long, trackId: String, part: Int): String {
+    fun subtitleUrl(id: Long, trackId: String, part: Int, async: Boolean = false): String {
         val token = Uri.encode(tokenStore.token.orEmpty())
         val base = serverStore.normalizedBase()
         val tid = Uri.encode(trackId)
-        return "$base/api/media/subtitles/$id/$tid?token=$token&part=$part"
+        val asyncQ = if (async) "&async=1" else ""
+        return "$base/api/media/subtitles/$id/$tid?token=$token&part=$part$asyncQ"
+    }
+
+    fun subtitleStatusUrl(id: Long, trackId: String, part: Int): String {
+        val token = Uri.encode(tokenStore.token.orEmpty())
+        val base = serverStore.normalizedBase()
+        val tid = Uri.encode(trackId)
+        return "$base/api/media/subtitles/$id/$tid/status?token=$token&part=$part"
     }
 
     fun resolveImage(item: MediaItem?, kind: String = "poster"): String {
