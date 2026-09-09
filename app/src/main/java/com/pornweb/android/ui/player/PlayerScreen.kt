@@ -91,13 +91,17 @@ import com.pornweb.android.R
 import com.pornweb.android.data.ExtraFile
 import com.pornweb.android.data.ProgressRequest
 import com.pornweb.android.data.SubtitleTrack
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.math.roundToLong
@@ -213,7 +217,11 @@ private fun PlayerBody(
     var subtitleTracks by remember { mutableStateOf<List<SubtitleTrack>>(emptyList()) }
     var subtitleTracksLoading by remember { mutableStateOf(false) }
     var selectedTrackId by remember { mutableStateOf<String?>(null) }
+    var cachedSubtitleUri by remember { mutableStateOf<Uri?>(null) }
+    var subtitleLoading by remember { mutableStateOf(false) }
+    var subtitleHint by remember { mutableStateOf<String?>(null) }
     var showSubtitleMenu by remember { mutableStateOf(false) }
+    var subtitlePrefetchJob by remember { mutableStateOf<Job?>(null) }
 
     val defaultSpeed = prefs.defaultSpeed
     val longPressSpeed = prefs.longPressSpeed
@@ -271,16 +279,29 @@ private fun PlayerBody(
             }
     }
 
-    fun buildMediaItem(): MediaItem {
+    fun subtitleCacheFile(trackId: String): File {
+        val dir = File(context.cacheDir, "subs")
+        if (!dir.exists()) dir.mkdirs()
+        val safe = trackId.replace(Regex("[^A-Za-z0-9._-]"), "_")
+        return File(dir, "${id}_${part}_${safe}.vtt")
+    }
+
+    fun buildMediaItem(localSubtitleUri: Uri? = cachedSubtitleUri): MediaItem {
         val builder = MediaItem.Builder().setUri(url)
-        // Lazy: only side-load the currently selected supported track (avoids dozens of VTT fetches).
+        // Lazy: only side-load the currently selected supported track from local cache (prefer file://).
         val tid = selectedTrackId
         if (!tid.isNullOrBlank()) {
             val track = subtitleTracks.find { it.trackId() == tid }
             if (track != null && track.isSupported()) {
+                val subUri = localSubtitleUri
+                    ?: run {
+                        val cached = subtitleCacheFile(tid)
+                        if (cached.isFile && cached.length() > 0L) Uri.fromFile(cached) else null
+                    }
+                    ?: Uri.parse(c.subtitleUrl(id, tid, part))
                 builder.setSubtitleConfigurations(
                     listOf(
-                        MediaItem.SubtitleConfiguration.Builder(Uri.parse(c.subtitleUrl(id, tid, part)))
+                        MediaItem.SubtitleConfiguration.Builder(subUri)
                             .setMimeType(MimeTypes.TEXT_VTT)
                             .setLanguage(track.language?.takeIf { it.isNotBlank() })
                             .setLabel(track.label ?: track.language ?: tid)
@@ -346,20 +367,112 @@ private fun PlayerBody(
         player.trackSelectionParameters = builder.build()
     }
 
-    /** User picked a subtitle (or cleared). Rebuild MediaItem so only one VTT is side-loaded. */
+    fun clearSubtitleTracksOnly() {
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .build()
+    }
+
+    /** Download VTT off the player path; returns local file Uri or null. */
+    suspend fun prefetchSubtitleVtt(trackId: String): Uri? = withContext(Dispatchers.IO) {
+        val dest = subtitleCacheFile(trackId)
+        if (dest.isFile && dest.length() > 0L) {
+            return@withContext Uri.fromFile(dest)
+        }
+        val tmp = File(dest.absolutePath + ".tmp")
+        val req = Request.Builder()
+            .url(c.subtitleUrl(id, trackId, part))
+            .header("Accept", "text/vtt,*/*")
+            .get()
+            .build()
+        // Long timeouts like streamClient; plain client so Accept stays text/vtt
+        // (streamClient auth interceptor would force application/json). URL has token=.
+        val client = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(0, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(0, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .build()
+        client.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) {
+                tmp.delete()
+                return@withContext null
+            }
+            val body = resp.body ?: return@withContext null
+            tmp.outputStream().use { out -> body.byteStream().copyTo(out) }
+        }
+        if (!tmp.isFile || tmp.length() <= 0L) {
+            tmp.delete()
+            return@withContext null
+        }
+        if (dest.exists()) dest.delete()
+        if (!tmp.renameTo(dest)) {
+            tmp.copyTo(dest, overwrite = true)
+            tmp.delete()
+        }
+        if (!dest.isFile || dest.length() <= 0L) return@withContext null
+        Uri.fromFile(dest)
+    }
+
+    /** User picked a subtitle (or cleared). Prefetch VTT to cache, then attach local file:// once. */
     fun applySubtitleSelection(trackId: String?) {
+        subtitlePrefetchJob?.cancel()
+        subtitlePrefetchJob = null
         if (trackId == null) {
+            subtitleLoading = false
+            subtitleHint = null
             selectedTrackId = null
-            // Drop side-loaded VTT and keep playback position.
-            reloadMediaKeepingPosition()
+            cachedSubtitleUri = null
+            // Prefer disable text tracks without full rebuild when possible.
+            if (player.mediaItemCount > 0) {
+                clearSubtitleTracksOnly()
+            } else {
+                reloadMediaKeepingPosition()
+            }
             return
         }
-        if (trackId == selectedTrackId) {
+        if (trackId == selectedTrackId && cachedSubtitleUri != null) {
             enableSelectedTextTrack()
             return
         }
-        selectedTrackId = trackId
-        reloadMediaKeepingPosition()
+        subtitleLoading = true
+        subtitleHint = "字幕加载中…"
+        val job = scope.launch {
+            try {
+                val local = prefetchSubtitleVtt(trackId)
+                if (!isActive) return@launch
+                if (local == null) {
+                    Toast.makeText(context, "字幕加载失败", Toast.LENGTH_SHORT).show()
+                    subtitleHint = "字幕加载失败"
+                    delay(1800)
+                    if (subtitleHint == "字幕加载失败") subtitleHint = null
+                    return@launch
+                }
+                selectedTrackId = trackId
+                cachedSubtitleUri = local
+                // Brief suppress of center buffering while ExoPlayer re-prepares with local VTT.
+                subtitleLoading = true
+                reloadMediaKeepingPosition()
+                delay(800)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                Toast.makeText(context, "字幕加载失败", Toast.LENGTH_SHORT).show()
+                subtitleHint = "字幕加载失败"
+                delay(1800)
+                if (subtitleHint == "字幕加载失败") subtitleHint = null
+            } finally {
+                if (subtitlePrefetchJob === coroutineContext[Job]) {
+                    subtitleLoading = false
+                    if (subtitleHint == "字幕加载中…") subtitleHint = null
+                }
+            }
+        }
+        subtitlePrefetchJob = job
     }
 
     var controlsVisible by remember { mutableStateOf(true) }
@@ -409,6 +522,7 @@ private fun PlayerBody(
 
     DisposableEffect(player) {
         onDispose {
+            subtitlePrefetchJob?.cancel()
             saveProgress(c, id, part, player)
             player.release()
         }
@@ -428,7 +542,12 @@ private fun PlayerBody(
 
     LaunchedEffect(url) {
         playError = null
+        subtitlePrefetchJob?.cancel()
+        subtitlePrefetchJob = null
         selectedTrackId = null
+        cachedSubtitleUri = null
+        subtitleLoading = false
+        subtitleHint = null
         reloadMediaKeepingPosition()
     }
 
@@ -646,6 +765,16 @@ private fun PlayerBody(
                     .padding(24.dp)
                     .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                     .padding(12.dp)
+            )
+        } else if (subtitleLoading || subtitleHint != null) {
+            Text(
+                subtitleHint ?: "字幕加载中…",
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 88.dp)
+                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
             )
         } else if (buffering && swipeHint == null && speedHint == null) {
             Text("缓冲中…", color = Color.White, modifier = Modifier.align(Alignment.Center))
