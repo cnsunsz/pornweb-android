@@ -39,15 +39,26 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.ClosedCaption
+import androidx.compose.material.icons.filled.CropFree
+import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.Gif
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -1059,7 +1070,7 @@ private fun PlayerBody(
                             WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
                         )
                     )
-                    .padding(end = 10.dp, bottom = 78.dp)
+                    .padding(end = 10.dp, bottom = 118.dp)
             )
         }
 
@@ -1077,7 +1088,7 @@ private fun PlayerBody(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(start = 28.dp, end = 28.dp, bottom = 76.dp),
+                    .padding(start = 28.dp, end = 28.dp, bottom = 112.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -1137,26 +1148,34 @@ private fun PlayerBody(
         }
 
 
+        // Locked: single unlock affordance (no vertical rail).
         if (locked) {
             AnimatedVisibility(
                 visible = controlsVisible,
                 enter = fadeIn(),
                 exit = fadeOut(),
-                modifier = Modifier.align(Alignment.CenterStart)
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(
+                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+                        )
+                    )
+                    .padding(start = 12.dp, bottom = 20.dp)
             ) {
-                LeftPlayerRail(
-                    locked = true,
-                    orientLandscape = orientLandscape,
-                    showParts = false,
-                    onToggleLock = {
+                IconButton(
+                    onClick = {
                         locked = false
                         controlsVisible = true
                         applyOrient(orientMode, false)
                     },
-                    onToggleOrient = {},
-                    onParts = {},
-                    collapsible = false
-                )
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.45f))
+                ) {
+                    Icon(Icons.Default.Lock, contentDescription = "解锁", tint = PwAccent)
+                }
             }
         }
 
@@ -1166,42 +1185,40 @@ private fun PlayerBody(
             exit = fadeOut()
         ) {
             Box(Modifier.fillMaxSize()) {
+                // Top: back + title + ⋯ only
                 Column(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
                         .background(
-                            Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.75f), Color.Transparent))
+                            Brush.verticalGradient(
+                                listOf(Color.Black.copy(alpha = 0.72f), Color.Transparent)
+                            )
                         )
                         .windowInsetsPadding(
                             WindowInsets.safeDrawing.only(
                                 WindowInsetsSides.Horizontal + WindowInsetsSides.Top
                             )
                         )
-                        .padding(start = 8.dp, top = 12.dp, end = 8.dp, bottom = 8.dp)
+                        .padding(start = 4.dp, top = 4.dp, end = 4.dp, bottom = 10.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = Color.White)
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "返回",
+                                tint = Color.White
+                            )
                         }
                         Text(
                             title,
                             color = Color.White,
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 2,
-                            modifier = Modifier.padding(end = 4.dp).weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 4.dp)
                         )
-                        IconButton(onClick = {
-                            try {
-                                player.pause()
-                                c.openExternalPlayer(context, id, part, title)
-                            } catch (_: ActivityNotFoundException) {
-                                externalHint = "没有可用的外部播放器"
-                            }
-                            controlsVisible = true
-                        }) {
-                            Icon(Icons.Default.OpenInNew, contentDescription = "外部播放", tint = Color.White)
-                        }
                         IconButton(onClick = {
                             audioTracks = listAudioTracks()
                             showMoreSheet = true
@@ -1209,72 +1226,15 @@ private fun PlayerBody(
                         }) {
                             Icon(Icons.Default.MoreVert, contentDescription = "更多", tint = Color.White)
                         }
-                        IconButton(onClick = onOpenSettings) {
-                            Icon(Icons.Default.Settings, contentDescription = "播放设置", tint = Color.White)
-                        }
                     }
                 }
 
-                LeftPlayerRail(
-                    locked = false,
-                    orientLandscape = orientLandscape,
-                    showParts = extras.size > 1,
-                    onToggleLock = {
-                        locked = true
-                        controlsVisible = true
-                        applyOrient(orientMode, true)
-                    },
-                    onToggleOrient = {
-                        orientMode = when (orientMode) {
-                            OrientMode.Sensor -> OrientMode.Landscape
-                            OrientMode.Landscape -> OrientMode.Portrait
-                            OrientMode.Portrait -> OrientMode.Sensor
-                        }
-                        applyOrient(orientMode, false)
-                        controlsVisible = true
-                    },
-                    onParts = {
-                        showPartsSheet = true
-                        controlsVisible = true
-                    },
-                    modifier = Modifier.align(Alignment.CenterStart)
-                )
-
-                RightPlayerRail(
-                    fillMode = resizeZoom,
-                    subtitleActive = selectedTrackId != null,
-                    currentSpeedLabel = String.format("%.2fx", playbackSpeed).trimEnd('0').trimEnd('.'),
-                    showSpeedMenu = showSpeedMenu,
-                    onDismissSpeed = { showSpeedMenu = false },
-                    onSpeedClick = {
-                        showSpeedMenu = true
-                        controlsVisible = true
-                    },
-                    onSelectSpeed = { sp ->
-                        applyUserSpeed(sp)
-                        showSpeedMenu = false
-                        controlsVisible = true
-                    },
-                    speedOptions = speedOptions,
-                    selectedSpeed = playbackSpeed,
-                    onScreenshot = {
-                        PlayerScreenshot.captureAndSave(context, playerViewRef)
-                        controlsVisible = true
-                    },
-                    onToggleFill = {
-                        resizeZoom = !resizeZoom
-                        controlsVisible = true
-                    },
-                    onSubtitles = {
-                        showSubtitleMenu = true
-                        controlsVisible = true
-                    },
-                    collapsible = true,
-                    startCollapsed = orientLandscape,
-                    modifier = Modifier.align(Alignment.CenterEnd)
-                )
-
-                Box(Modifier.align(Alignment.CenterEnd).padding(end = 56.dp, top = 120.dp)) {
+                // Subtitle dropdown anchored near bottom chips
+                Box(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 16.dp, bottom = 96.dp)
+                ) {
                     DropdownMenu(
                         expanded = showSubtitleMenu,
                         onDismissRequest = { showSubtitleMenu = false }
@@ -1346,14 +1306,14 @@ private fun PlayerBody(
                     }
                 }
 
-
+                // Bottom: scrubber + centered transport + secondary chips (MX/KM style)
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .background(
                             Brush.verticalGradient(
-                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f))
+                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.78f))
                             )
                         )
                         .windowInsetsPadding(
@@ -1361,84 +1321,110 @@ private fun PlayerBody(
                                 WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
                             )
                         )
-                        .padding(start = 12.dp, top = 6.dp, end = 12.dp, bottom = 14.dp)
+                        .padding(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 10.dp)
                 ) {
                     val barFraction = (sliderPos / durationForSlider).coerceIn(0f, 1f)
                     var barWidthPx by remember { mutableFloatStateOf(1f) }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(14.dp)
-                            .onSizeChanged { barWidthPx = it.width.toFloat().coerceAtLeast(1f) }
-                            .pointerInput(durationMs) {
-                                detectTapGestures { offset ->
-                                    val x = offset.x.coerceIn(0f, barWidthPx)
-                                    val target = ((x / barWidthPx) * durationForSlider).toLong()
-                                    seekValue = target.toFloat()
-                                    player.seekTo(target)
-                                    positionMs = target
-                                    controlsVisible = true
-                                }
-                            }
-                            .pointerInput(durationMs) {
-                                detectHorizontalDragGestures(
-                                    onDragStart = {
-                                        seeking = true
-                                        controlsVisible = true
-                                    },
-                                    onDragEnd = {
-                                        player.seekTo(seekValue.toLong().coerceAtLeast(0))
-                                        positionMs = seekValue.toLong()
-                                        seeking = false
-                                    },
-                                    onDragCancel = { seeking = false },
-                                    onHorizontalDrag = { change, _ ->
-                                        val x = change.position.x.coerceIn(0f, barWidthPx)
-                                        seekValue = (x / barWidthPx) * durationForSlider
-                                        seeking = true
-                                    }
-                                )
-                            },
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(2.dp)
-                                .clip(RoundedCornerShape(1.dp))
-                                .background(Color.White.copy(alpha = 0.28f))
-                        )
-                        Box(
-                            Modifier
-                                .fillMaxWidth(barFraction)
-                                .height(2.dp)
-                                .clip(RoundedCornerShape(1.dp))
-                                .background(PwAccent)
-                        )
-                        Box(
-                            Modifier
-                                .fillMaxWidth(barFraction)
-                                .height(14.dp),
-                            contentAlignment = Alignment.CenterEnd
-                        ) {
-                            Box(
-                                Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(PwAccent)
-                            )
-                        }
-                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             formatTime(if (seeking) seekValue.toLong() else positionMs),
-                            color = Color.White,
+                            color = Color.White.copy(alpha = 0.9f),
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.width(48.dp)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(28.dp)
+                                .padding(horizontal = 6.dp)
+                                .onSizeChanged { barWidthPx = it.width.toFloat().coerceAtLeast(1f) }
+                                .pointerInput(durationMs) {
+                                    detectTapGestures { offset ->
+                                        val x = offset.x.coerceIn(0f, barWidthPx)
+                                        val target = ((x / barWidthPx) * durationForSlider).toLong()
+                                        seekValue = target.toFloat()
+                                        player.seekTo(target)
+                                        positionMs = target
+                                        controlsVisible = true
+                                    }
+                                }
+                                .pointerInput(durationMs) {
+                                    detectHorizontalDragGestures(
+                                        onDragStart = {
+                                            seeking = true
+                                            controlsVisible = true
+                                        },
+                                        onDragEnd = {
+                                            player.seekTo(seekValue.toLong().coerceAtLeast(0))
+                                            positionMs = seekValue.toLong()
+                                            seeking = false
+                                        },
+                                        onDragCancel = { seeking = false },
+                                        onHorizontalDrag = { change, _ ->
+                                            val x = change.position.x.coerceIn(0f, barWidthPx)
+                                            seekValue = (x / barWidthPx) * durationForSlider
+                                            seeking = true
+                                        }
+                                    )
+                                },
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(3.dp)
+                                    .clip(RoundedCornerShape(1.5.dp))
+                                    .background(Color.White.copy(alpha = 0.28f))
+                            )
+                            Box(
+                                Modifier
+                                    .fillMaxWidth(barFraction)
+                                    .height(3.dp)
+                                    .clip(RoundedCornerShape(1.5.dp))
+                                    .background(PwAccent)
+                            )
+                            Box(
+                                Modifier
+                                    .fillMaxWidth(barFraction)
+                                    .height(28.dp),
+                                contentAlignment = Alignment.CenterEnd
+                            ) {
+                                Box(
+                                    Modifier
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(PwAccent)
+                                )
+                            }
+                        }
+                        Text(
+                            rightTimeLabel,
+                            color = Color.White.copy(alpha = 0.9f),
                             style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.width(52.dp)
                         )
+                    }
+
+                    Spacer(Modifier.height(2.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                locked = true
+                                controlsVisible = true
+                                applyOrient(orientMode, true)
+                            },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(Icons.Default.LockOpen, contentDescription = "锁定", tint = Color.White)
+                        }
                         Spacer(Modifier.weight(1f))
                         IconButton(
                             onClick = {
@@ -1446,22 +1432,27 @@ private fun PlayerBody(
                                 swipeHint = "-${prefs.skipSeconds}s"
                                 controlsVisible = true
                             },
-                            modifier = Modifier.size(40.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
-                            Icon(Icons.Default.Replay10, contentDescription = "快退", tint = Color.White)
+                            Icon(
+                                Icons.Default.Replay10,
+                                contentDescription = "快退",
+                                tint = Color.White,
+                                modifier = Modifier.size(28.dp)
+                            )
                         }
                         IconButton(
                             onClick = {
                                 if (player.isPlaying) player.pause() else player.play()
                                 controlsVisible = true
                             },
-                            modifier = Modifier.size(44.dp)
+                            modifier = Modifier.size(56.dp)
                         ) {
                             Icon(
                                 if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = if (playing) "暂停" else "播放",
-                                tint = Color.White,
-                                modifier = Modifier.size(28.dp)
+                                tint = PwAccent,
+                                modifier = Modifier.size(36.dp)
                             )
                         }
                         IconButton(
@@ -1470,17 +1461,124 @@ private fun PlayerBody(
                                 swipeHint = "+${prefs.skipSeconds}s"
                                 controlsVisible = true
                             },
-                            modifier = Modifier.size(40.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
-                            Icon(Icons.Default.Forward10, contentDescription = "快进", tint = Color.White)
+                            Icon(
+                                Icons.Default.Forward10,
+                                contentDescription = "快进",
+                                tint = Color.White,
+                                modifier = Modifier.size(28.dp)
+                            )
                         }
                         Spacer(Modifier.weight(1f))
-                        Text(
-                            rightTimeLabel,
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.width(56.dp)
-                        )
+                        IconButton(
+                            onClick = {
+                                resizeZoom = !resizeZoom
+                                controlsVisible = true
+                            },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                if (resizeZoom) Icons.Default.FitScreen else Icons.Default.CropFree,
+                                contentDescription = if (resizeZoom) "适应" else "铺满",
+                                tint = if (resizeZoom) PwAccent else Color.White
+                            )
+                        }
+                    }
+
+                    // Secondary row: 字幕 / 倍速 / 截图
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 2.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = {
+                                showSubtitleMenu = true
+                                controlsVisible = true
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.ClosedCaption,
+                                contentDescription = null,
+                                tint = if (selectedTrackId != null) PwAccent else Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "字幕",
+                                color = if (selectedTrackId != null) PwAccent else Color.White
+                            )
+                        }
+                        Box {
+                            TextButton(
+                                onClick = {
+                                    showSpeedMenu = true
+                                    controlsVisible = true
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Default.Speed,
+                                    contentDescription = null,
+                                    tint = if (playbackSpeed != 1.0f) PwAccent else Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    String.format("%.2fx", playbackSpeed).trimEnd('0').trimEnd('.'),
+                                    color = if (playbackSpeed != 1.0f) PwAccent else Color.White
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showSpeedMenu,
+                                onDismissRequest = { showSpeedMenu = false }
+                            ) {
+                                speedOptions.forEach { sp ->
+                                    val label = when (sp) {
+                                        0.5f -> "0.5x"
+                                        0.75f -> "0.75x"
+                                        1.0f -> "1.0x"
+                                        1.25f -> "1.25x"
+                                        1.5f -> "1.5x"
+                                        1.75f -> "1.75x"
+                                        2.0f -> "2.0x"
+                                        2.5f -> "2.5x"
+                                        3.0f -> "3.0x"
+                                        else -> "${sp}x"
+                                    }
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                label,
+                                                color = if (sp == playbackSpeed) PwAccent else Color.Unspecified
+                                            )
+                                        },
+                                        onClick = {
+                                            applyUserSpeed(sp)
+                                            showSpeedMenu = false
+                                            controlsVisible = true
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                        TextButton(
+                            onClick = {
+                                PlayerScreenshot.captureAndSave(context, playerViewRef)
+                                controlsVisible = true
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.PhotoCamera,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text("截图", color = Color.White)
+                        }
                     }
                 }
             }
@@ -1531,7 +1629,119 @@ private fun PlayerBody(
                         .padding(start = 20.dp, end = 20.dp, bottom = 32.dp)
                 ) {
                     Text("更多", style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(8.dp))
+
+                    TextButton(
+                        onClick = {
+                            try {
+                                player.pause()
+                                c.openExternalPlayer(context, id, part, title)
+                            } catch (_: ActivityNotFoundException) {
+                                externalHint = "没有可用的外部播放器"
+                            }
+                            showMoreSheet = false
+                            controlsVisible = true
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text("外部播放器", modifier = Modifier.weight(1f))
+                    }
+                    TextButton(
+                        onClick = {
+                            showMoreSheet = false
+                            onOpenSettings()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text("播放设置", modifier = Modifier.weight(1f))
+                    }
+                    TextButton(
+                        onClick = {
+                            locked = true
+                            showMoreSheet = false
+                            controlsVisible = true
+                            applyOrient(orientMode, true)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text("锁定控件", modifier = Modifier.weight(1f))
+                    }
+                    TextButton(
+                        onClick = {
+                            orientMode = when (orientMode) {
+                                OrientMode.Sensor -> OrientMode.Landscape
+                                OrientMode.Landscape -> OrientMode.Portrait
+                                OrientMode.Portrait -> OrientMode.Sensor
+                            }
+                            applyOrient(orientMode, false)
+                            controlsVisible = true
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            Icons.Default.ScreenRotation,
+                            contentDescription = null,
+                            tint = if (orientLandscape) PwAccent else Color.Unspecified,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        val orientLabel = when (orientMode) {
+                            OrientMode.Sensor -> "旋转：自动"
+                            OrientMode.Landscape -> "旋转：横屏"
+                            OrientMode.Portrait -> "旋转：竖屏"
+                        }
+                        Text(orientLabel, modifier = Modifier.weight(1f))
+                    }
+                    if (extras.size > 1) {
+                        TextButton(
+                            onClick = {
+                                showMoreSheet = false
+                                showPartsSheet = true
+                                controlsVisible = true
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Text("选集", modifier = Modifier.weight(1f))
+                        }
+                    }
+                    TextButton(
+                        onClick = {
+                            resizeZoom = !resizeZoom
+                            controlsVisible = true
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            if (resizeZoom) Icons.Default.FitScreen else Icons.Default.CropFree,
+                            contentDescription = null,
+                            tint = if (resizeZoom) PwAccent else Color.Unspecified,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            if (resizeZoom) "画面：铺满" else "画面：适应",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    TextButton(
+                        onClick = { },
+                        enabled = false,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Gif, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text("GIF（暂未开放）", color = Color.Gray, modifier = Modifier.weight(1f))
+                    }
+
+                    HorizontalDivider(Modifier.padding(vertical = 12.dp))
                     Text("音轨", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(6.dp))
                     if (audioTracks.isEmpty()) {
@@ -1569,7 +1779,7 @@ private fun PlayerBody(
                         )
                     }
                     Text(
-                        "字幕时间轴偏移（占位）: ${subtitleOffsetMs} ms",
+                        "字幕时间轴偏移: ${subtitleOffsetMs} ms",
                         color = Color.Gray,
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(top = 4.dp)
@@ -1579,11 +1789,6 @@ private fun PlayerBody(
                         TextButton(onClick = { subtitleOffsetMs = 0 }) { Text("复位") }
                         TextButton(onClick = { subtitleOffsetMs += 100 }) { Text("+100ms") }
                     }
-                    Text(
-                        "偏移将在后续版本接入 ExoPlayer 渲染；编码选择暂未开放。",
-                        color = Color.Gray,
-                        style = MaterialTheme.typography.bodySmall
-                    )
                 }
             }
         }
