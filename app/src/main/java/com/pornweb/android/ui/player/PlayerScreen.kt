@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
-import android.graphics.Typeface
 import android.media.AudioManager
 import android.net.Uri
 import android.view.LayoutInflater
@@ -13,7 +12,6 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import android.widget.Toast
-import android.graphics.Color as AndroidColor
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -102,7 +100,6 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import com.pornweb.android.BuildConfig
 import com.pornweb.android.PornWebApp
@@ -262,6 +259,8 @@ private fun PlayerBody(
     var subtitleTracksLoading by remember { mutableStateOf(false) }
     var selectedTrackId by remember { mutableStateOf<String?>(null) }
     var cachedSubtitleUri by remember { mutableStateOf<Uri?>(null) }
+    var overlayCues by remember { mutableStateOf<List<WebVttCue>>(emptyList()) }
+    var activeSubtitleText by remember { mutableStateOf<String?>(null) }
     var subtitleLoading by remember { mutableStateOf(false) }
     var subtitleHint by remember { mutableStateOf<String?>(null) }
     var showSubtitleMenu by remember { mutableStateOf(false) }
@@ -338,93 +337,45 @@ private fun PlayerBody(
         return File(dir, "${id}_${part}_${safe}.vtt")
     }
 
-    fun buildMediaItem(localSubtitleUri: Uri? = cachedSubtitleUri): MediaItem {
-        val builder = MediaItem.Builder().setUri(url)
-        val tid = selectedTrackId
-        if (!tid.isNullOrBlank()) {
-            val track = subtitleTracks.find { it.trackId() == tid }
-            if (track != null && track.isSupported()) {
-                val subUri = localSubtitleUri
-                    ?: run {
-                        val cached = subtitleCacheFile(tid)
-                        if (cached.isFile && cached.length() > 0L) Uri.fromFile(cached) else null
-                    }
-                    ?: Uri.parse(c.subtitleUrl(id, tid, part))
-                builder.setSubtitleConfigurations(
-                    listOf(
-                        MediaItem.SubtitleConfiguration.Builder(subUri)
-                            .setMimeType(MimeTypes.TEXT_VTT)
-                            .setLanguage(track.language?.takeIf { it.isNotBlank() })
-                            .setLabel(track.label ?: track.language ?: tid)
-                            .setId(tid)
-                            .build()
-                    )
-                )
-            }
-        }
-        return builder.build()
+    fun buildMediaItem(): MediaItem {
+        // Video-only: subtitles are rendered via Compose overlay from parsed VTT cues.
+        // Only reload when stream url/part changes — never just to attach/clear subs.
+        return MediaItem.Builder().setUri(url).build()
     }
 
     fun reloadMediaKeepingPosition() {
         val keepPos = player.currentPosition.takeIf { it > 0 && player.mediaItemCount > 0 } ?: 0L
         val start = if (keepPos > 0) keepPos else startMsState.value
-        player.setMediaItem(buildMediaItem())
+        player.setMediaItem(buildMediaItem(), /* resetPosition= */ false)
         player.prepare()
         if (start > 0) player.seekTo(start)
         player.setPlaybackSpeed(playbackSpeed)
+        // Keep text tracks disabled; overlay path does not use ExoPlayer SubtitleConfiguration.
         player.trackSelectionParameters = player.trackSelectionParameters
             .buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, selectedTrackId == null)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
             .clearOverridesOfType(C.TRACK_TYPE_TEXT)
             .build()
         player.playWhenReady = true
         player.play()
     }
 
-    fun enableSelectedTextTrack() {
-        val trackId = selectedTrackId
-        if (trackId == null) {
-            player.trackSelectionParameters = player.trackSelectionParameters
-                .buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                .build()
-            return
-        }
-        val groups = player.currentTracks.groups
-        for (gi in 0 until groups.size) {
-            val group = groups[gi]
-            if (group.type != C.TRACK_TYPE_TEXT) continue
-            for (j in 0 until group.length) {
-                val format = group.getTrackFormat(j)
-                if (format.id == trackId || format.label == trackId) {
-                    player.trackSelectionParameters = player.trackSelectionParameters
-                        .buildUpon()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                        .addOverride(TrackSelectionOverride(group.mediaTrackGroup, listOf(j)))
-                        .build()
-                    return
-                }
-            }
-        }
-        val track = subtitleTracks.find { it.trackId() == trackId }
-        val lang = track?.language?.takeIf { it.isNotBlank() }
-        val builder = player.trackSelectionParameters.buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-        if (lang != null) builder.setPreferredTextLanguage(lang)
-        player.trackSelectionParameters = builder.build()
+    fun clearOverlaySubtitles() {
+        selectedTrackId = null
+        cachedSubtitleUri = null
+        overlayCues = emptyList()
+        activeSubtitleText = null
     }
 
-    fun clearSubtitleTracksOnly() {
-        player.trackSelectionParameters = player.trackSelectionParameters
-            .buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-            .build()
+    fun loadOverlayCuesFromUri(local: Uri): List<WebVttCue> {
+        val file = when {
+            local.scheme == "file" && !local.path.isNullOrBlank() -> File(local.path!!)
+            else -> null
+        }
+        val content = file?.takeIf { it.isFile && it.length() > 0L }?.readText(Charsets.UTF_8)
+            ?: return emptyList()
+        return WebVttParser.parse(content)
     }
-
 
     suspend fun prefetchSubtitleVtt(trackId: String): Uri? = withContext(Dispatchers.IO) {
         val dest = subtitleCacheFile(trackId)
@@ -513,21 +464,14 @@ private fun PlayerBody(
         if (trackId == null) {
             subtitleLoading = false
             subtitleHint = null
-            selectedTrackId = null
-            cachedSubtitleUri = null
-            if (player.mediaItemCount > 0) {
-                clearSubtitleTracksOnly()
-            } else {
-                reloadMediaKeepingPosition()
-            }
+            clearOverlaySubtitles()
             return
         }
-        if (trackId == selectedTrackId && cachedSubtitleUri != null) {
-            enableSelectedTextTrack()
+        if (trackId == selectedTrackId && overlayCues.isNotEmpty()) {
             return
         }
         subtitleLoading = true
-        subtitleHint = "字幕加载中…"
+        subtitleHint = "准备中"
         val job = scope.launch {
             try {
                 val local = prefetchSubtitleVtt(trackId)
@@ -539,11 +483,21 @@ private fun PlayerBody(
                     if (subtitleHint == "字幕加载失败") subtitleHint = null
                     return@launch
                 }
+                val cues = withContext(Dispatchers.IO) { loadOverlayCuesFromUri(local) }
+                if (!isActive) return@launch
+                if (cues.isEmpty()) {
+                    Toast.makeText(context, "字幕解析失败", Toast.LENGTH_SHORT).show()
+                    subtitleHint = "字幕解析失败"
+                    delay(1800)
+                    if (subtitleHint == "字幕解析失败") subtitleHint = null
+                    return@launch
+                }
                 selectedTrackId = trackId
                 cachedSubtitleUri = local
-                subtitleLoading = true
-                reloadMediaKeepingPosition()
-                delay(800)
+                overlayCues = cues
+                // Drive active line immediately from current position (no ExoPlayer reprepare).
+                activeSubtitleText = WebVttParser.activeText(cues, player.currentPosition)
+                subtitleHint = null
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -554,7 +508,7 @@ private fun PlayerBody(
             } finally {
                 if (subtitlePrefetchJob === coroutineContext[Job]) {
                     subtitleLoading = false
-                    if (subtitleHint == "字幕加载中…") subtitleHint = null
+                    if (subtitleHint == "准备中") subtitleHint = null
                 }
             }
         }
@@ -716,8 +670,7 @@ private fun PlayerBody(
         playError = null
         subtitlePrefetchJob?.cancel()
         subtitlePrefetchJob = null
-        selectedTrackId = null
-        cachedSubtitleUri = null
+        clearOverlaySubtitles()
         subtitleLoading = false
         subtitleHint = null
         videoScale = 1f
@@ -740,10 +693,6 @@ private fun PlayerBody(
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 playing = isPlaying
                 if (!isPlaying) saveProgress(c, id, part, player)
-            }
-
-            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
-                enableSelectedTextTrack()
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -776,12 +725,18 @@ private fun PlayerBody(
         }
     }
 
-    LaunchedEffect(player) {
+    LaunchedEffect(player, overlayCues, subtitleOffsetMs) {
         while (isActive) {
             val dur = player.duration
             durationMs = if (dur > 0) dur else 0L
-            if (!seeking) positionMs = player.currentPosition.coerceAtLeast(0)
+            val pos = player.currentPosition.coerceAtLeast(0)
+            if (!seeking) positionMs = pos
             playing = player.isPlaying
+            activeSubtitleText = if (overlayCues.isEmpty()) {
+                null
+            } else {
+                WebVttParser.activeText(overlayCues, pos + subtitleOffsetMs)
+            }
             delay(200)
         }
     }
@@ -844,18 +799,9 @@ private fun PlayerBody(
                 }
                 view.keepScreenOn = true
                 view.subtitleView?.apply {
-                    setApplyEmbeddedStyles(false)
-                    setStyle(
-                        CaptionStyleCompat(
-                            AndroidColor.WHITE,
-                            AndroidColor.TRANSPARENT,
-                            AndroidColor.TRANSPARENT,
-                            CaptionStyleCompat.EDGE_TYPE_OUTLINE,
-                            AndroidColor.BLACK,
-                            Typeface.DEFAULT_BOLD
-                        )
-                    )
-                    setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f)
+                    // Overlay path: disable ExoPlayer SubtitleView to avoid double-draw if any text track appears.
+                    setCues(emptyList())
+                    visibility = android.view.View.GONE
                 }
                 playerViewRef = view
                 view
@@ -1085,9 +1031,10 @@ private fun PlayerBody(
                     .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                     .padding(12.dp)
             )
-        } else if (subtitleLoading || subtitleHint != null) {
+        } else if ((subtitleLoading || subtitleHint != null) && activeSubtitleText == null) {
+            // Non-blocking hint only — never a fullscreen spinner while preparing subs.
             Text(
-                subtitleHint ?: "字幕加载中…",
+                subtitleHint ?: "准备中",
                 color = Color.White,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -1095,10 +1042,25 @@ private fun PlayerBody(
                     .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 14.dp, vertical = 8.dp)
             )
-        } else if (buffering && swipeHint == null && speedHint == null &&
+        } else if (buffering && !subtitleLoading && swipeHint == null && speedHint == null &&
             brightnessHint == null && volumeHint == null
         ) {
             Text("缓冲中…", color = Color.White, modifier = Modifier.align(Alignment.Center))
+        }
+
+        // Compose subtitle overlay (WebVTT cues), independent of ExoPlayer MediaItem.
+        val cueText = activeSubtitleText
+        if (!cueText.isNullOrBlank()) {
+            Text(
+                cueText,
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(start = 24.dp, end = 24.dp, bottom = 72.dp)
+                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            )
         }
 
         val centerHint = brightnessHint ?: volumeHint ?: swipeHint
@@ -1297,6 +1259,13 @@ private fun PlayerBody(
                                 )
                             }
                             else -> {
+                                if (subtitleLoading) {
+                                    DropdownMenuItem(
+                                        text = { Text("准备中…") },
+                                        onClick = { },
+                                        enabled = false
+                                    )
+                                }
                                 DropdownMenuItem(
                                     text = {
                                         Text(
