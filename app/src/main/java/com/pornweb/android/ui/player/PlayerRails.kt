@@ -4,8 +4,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
@@ -69,7 +74,11 @@ fun LeftPlayerRail(
     modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier.padding(start = 10.dp, top = 72.dp, bottom = 96.dp),
+        modifier = modifier
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Vertical)
+            )
+            .padding(start = 10.dp, top = 48.dp, bottom = 64.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -116,7 +125,11 @@ fun RightPlayerRail(
     modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier.padding(end = 10.dp, top = 72.dp, bottom = 96.dp),
+        modifier = modifier
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Vertical)
+            )
+            .padding(end = 10.dp, top = 48.dp, bottom = 64.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {

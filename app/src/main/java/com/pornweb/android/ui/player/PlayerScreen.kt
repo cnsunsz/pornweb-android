@@ -9,6 +9,9 @@ import android.media.AudioManager
 import android.net.Uri
 import android.view.LayoutInflater
 import android.view.WindowManager
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import android.widget.Toast
 import android.graphics.Color as AndroidColor
 import androidx.compose.animation.AnimatedVisibility
@@ -19,18 +22,21 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -178,6 +184,19 @@ fun PlayerScreen(
         onDispose {
             activity.requestedOrientation = prev
             activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
+    // True immersive fullscreen while on the player; restore bars when leaving.
+    DisposableEffect(Unit) {
+        val window = activity.window
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        controller.hide(WindowInsetsCompat.Type.systemBars())
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        onDispose {
+            controller.show(WindowInsetsCompat.Type.systemBars())
         }
     }
 
@@ -920,6 +939,8 @@ private fun PlayerBody(
                         }
                     )
                 }
+                // Unified 1-finger drag: horizontal = seek; left vertical = brightness; right vertical = volume.
+                // Angle/threshold keeps vertical and horizontal from fighting.
                 .pointerInput(locked, durationMs, swipeSeekSeconds, screenWidthPx, screenHeightPx) {
                     if (locked) return@pointerInput
                     awaitEachGesture {
@@ -931,30 +952,45 @@ private fun PlayerBody(
                         var decided = false
                         val startX = down.position.x
                         val third = size.width / 3f
+                        val slop = 28f
                         dragBasePos = player.currentPosition.coerceAtLeast(0)
                         dragAccumPx = 0f
 
                         while (true) {
                             val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull() ?: break
-                            if (!change.pressed) break
+                            val pressed = event.changes.filter { it.pressed }
+                            if (pressed.size > 1) {
+                                // Hand off to pinch; do not consume so zoom can run.
+                                break
+                            }
+                            val change = pressed.firstOrNull() ?: break
                             val dx = change.positionChange().x
                             val dy = change.positionChange().y
                             totalX += dx
                             totalY += dy
-                            if (!decided && (abs(totalX) > 24f || abs(totalY) > 24f)) {
-                                decided = true
-                                if (abs(totalY) > abs(totalX) * 1.05f) {
-                                    mode = when {
-                                        startX < third -> 2
-                                        startX > size.width - third -> 3
-                                        else -> 0
+                            if (!decided && (abs(totalX) > slop || abs(totalY) > slop)) {
+                                val ax = abs(totalX)
+                                val ay = abs(totalY)
+                                when {
+                                    // Clear horizontal → seek (works across full width)
+                                    ax >= ay * 1.2f -> {
+                                        decided = true
+                                        mode = 1
+                                        seeking = true
+                                        controlsVisible = true
                                     }
-                                    if (mode == 2) baseBright = brightness01
-                                } else {
-                                    mode = 1
-                                    seeking = true
-                                    controlsVisible = true
+                                    // Clear vertical → brightness (left) / volume (right)
+                                    ay >= ax * 1.2f -> {
+                                        decided = true
+                                        mode = when {
+                                            startX < third -> 2
+                                            startX > size.width - third -> 3
+                                            else -> 0 // middle vertical: ignore
+                                        }
+                                        if (mode == 2) baseBright = brightness01
+                                    }
+                                    // Ambiguous angle: wait for a clearer direction
+                                    else -> Unit
                                 }
                             }
                             when (mode) {
@@ -969,19 +1005,21 @@ private fun PlayerBody(
                                     val sign = if (signed >= 0) "+" else "-"
                                     swipeHint = "$sign${formatTime(abs(signed))} → ${formatTime(target)}"
                                     controlsVisible = true
+                                    change.consume()
                                 }
                                 2 -> {
                                     val delta = -totalY / screenHeightPx
                                     setWindowBrightness(baseBright + delta)
                                     brightnessHint = "亮度 ${(brightness01 * 100).toInt()}%"
+                                    change.consume()
                                 }
                                 3 -> {
                                     val delta = -dy / screenHeightPx
                                     val pct = adjustVolumePercent(delta)
                                     volumeHint = "音量 $pct%"
+                                    change.consume()
                                 }
                             }
-                            change.consume()
                         }
                         if (mode == 1) {
                             val target = seekValue.toLong().coerceIn(0L, durationMs.coerceAtLeast(0L))
@@ -992,19 +1030,46 @@ private fun PlayerBody(
                         }
                     }
                 }
+                // Pinch-zoom only (2+ fingers). Must not consume single-finger pans or seek dies.
                 .pointerInput(locked) {
                     if (locked) return@pointerInput
-                    detectTransformGestures { _, pan, zoom, _ ->
-                        if (zoom != 1f) {
-                            val next = (videoScale * zoom).coerceIn(1f, 4f)
-                            videoScale = next
-                            if (next <= 1.01f) {
-                                videoScale = 1f
-                                videoOffset = Offset.Zero
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        var lastSpan = -1f
+                        var lastCentroid = Offset.Zero
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val pressed = event.changes.filter { it.pressed }
+                            if (pressed.isEmpty()) break
+                            if (pressed.size < 2) {
+                                lastSpan = -1f
+                                continue
                             }
-                        }
-                        if (videoScale > 1.01f && (pan.x != 0f || pan.y != 0f)) {
-                            videoOffset += pan
+                            val c = Offset(
+                                pressed.map { it.position.x }.average().toFloat(),
+                                pressed.map { it.position.y }.average().toFloat()
+                            )
+                            val span = kotlin.math.hypot(
+                                (pressed[0].position.x - pressed[1].position.x).toDouble(),
+                                (pressed[0].position.y - pressed[1].position.y).toDouble()
+                            ).toFloat().coerceAtLeast(1f)
+                            if (lastSpan > 0f) {
+                                val zoom = span / lastSpan
+                                if (zoom != 1f) {
+                                    val next = (videoScale * zoom).coerceIn(1f, 4f)
+                                    videoScale = next
+                                    if (next <= 1.01f) {
+                                        videoScale = 1f
+                                        videoOffset = Offset.Zero
+                                    }
+                                }
+                                if (videoScale > 1.01f) {
+                                    videoOffset += (c - lastCentroid)
+                                }
+                            }
+                            lastSpan = span
+                            lastCentroid = c
+                            pressed.forEach { it.consume() }
                         }
                     }
                 }
@@ -1055,8 +1120,12 @@ private fun PlayerBody(
                 style = MaterialTheme.typography.headlineMedium,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(top = 48.dp)
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(
+                            WindowInsetsSides.Horizontal + WindowInsetsSides.Top
+                        )
+                    )
+                    .padding(top = 36.dp)
                     .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(10.dp))
                     .padding(horizontal = 18.dp, vertical = 8.dp)
             )
@@ -1108,8 +1177,12 @@ private fun PlayerBody(
                         .background(
                             Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.75f), Color.Transparent))
                         )
-                        .statusBarsPadding()
-                        .padding(horizontal = 4.dp, vertical = 4.dp)
+                        .windowInsetsPadding(
+                            WindowInsets.safeDrawing.only(
+                                WindowInsetsSides.Horizontal + WindowInsetsSides.Top
+                            )
+                        )
+                        .padding(start = 8.dp, top = 12.dp, end = 8.dp, bottom = 8.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onBack) {
@@ -1278,7 +1351,12 @@ private fun PlayerBody(
                                 listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f))
                             )
                         )
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                        .windowInsetsPadding(
+                            WindowInsets.safeDrawing.only(
+                                WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+                            )
+                        )
+                        .padding(start = 12.dp, top = 6.dp, end = 12.dp, bottom = 14.dp)
                 ) {
                     val barFraction = (sliderPos / durationForSlider).coerceIn(0f, 1f)
                     var barWidthPx by remember { mutableFloatStateOf(1f) }
