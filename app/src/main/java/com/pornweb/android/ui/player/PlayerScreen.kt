@@ -274,6 +274,7 @@ private fun PlayerBody(
     var subtitleTracks by remember { mutableStateOf<List<SubtitleTrack>>(emptyList()) }
     var subtitleTracksLoading by remember { mutableStateOf(false) }
     var selectedTrackId by remember { mutableStateOf<String?>(null) }
+    var pendingTrackId by remember { mutableStateOf<String?>(null) }
     var cachedSubtitleUri by remember { mutableStateOf<Uri?>(null) }
     var overlayCues by remember { mutableStateOf<List<WebVttCue>>(emptyList()) }
     var activeSubtitleText by remember { mutableStateOf<String?>(null) }
@@ -378,6 +379,7 @@ private fun PlayerBody(
 
     fun clearOverlaySubtitles() {
         selectedTrackId = null
+        pendingTrackId = null
         cachedSubtitleUri = null
         overlayCues = emptyList()
         activeSubtitleText = null
@@ -475,6 +477,8 @@ private fun PlayerBody(
     }
 
     fun applySubtitleSelection(trackId: String?) {
+        // Cancel any in-flight prefetch; its finally must not clear loading for the new job
+        // (identity check against subtitlePrefetchJob remains below).
         subtitlePrefetchJob?.cancel()
         subtitlePrefetchJob = null
         if (trackId == null) {
@@ -483,9 +487,17 @@ private fun PlayerBody(
             clearOverlaySubtitles()
             return
         }
-        if (trackId == selectedTrackId && overlayCues.isNotEmpty()) {
+        // Already showing this track — no-op.
+        if (trackId == selectedTrackId && pendingTrackId == null && overlayCues.isNotEmpty()) {
             return
         }
+        // Switching to a different track (or re-preparing): drop old overlay immediately so
+        // the previous language does not linger while the new VTT prepares. Never reprepare Exo.
+        overlayCues = emptyList()
+        activeSubtitleText = null
+        cachedSubtitleUri = null
+        selectedTrackId = null // only commit when new cues are ready
+        pendingTrackId = trackId
         subtitleLoading = true
         subtitleHint = null
         val job = scope.launch {
@@ -493,6 +505,7 @@ private fun PlayerBody(
                 val local = prefetchSubtitleVtt(trackId)
                 if (!isActive) return@launch
                 if (local == null) {
+                    if (pendingTrackId == trackId) pendingTrackId = null
                     Toast.makeText(context, "字幕加载失败", Toast.LENGTH_SHORT).show()
                     subtitleHint = "字幕加载失败"
                     delay(1800)
@@ -502,6 +515,7 @@ private fun PlayerBody(
                 val cues = withContext(Dispatchers.IO) { loadOverlayCuesFromUri(local) }
                 if (!isActive) return@launch
                 if (cues.isEmpty()) {
+                    if (pendingTrackId == trackId) pendingTrackId = null
                     Toast.makeText(context, "字幕解析失败", Toast.LENGTH_SHORT).show()
                     subtitleHint = "字幕解析失败"
                     delay(1800)
@@ -509,6 +523,7 @@ private fun PlayerBody(
                     return@launch
                 }
                 selectedTrackId = trackId
+                pendingTrackId = null
                 cachedSubtitleUri = local
                 overlayCues = cues
                 // Drive active line immediately from current position (no ExoPlayer reprepare).
@@ -517,6 +532,7 @@ private fun PlayerBody(
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
+                if (pendingTrackId == trackId) pendingTrackId = null
                 Toast.makeText(context, "字幕加载失败", Toast.LENGTH_SHORT).show()
                 subtitleHint = "字幕加载失败"
                 delay(1800)
@@ -1266,7 +1282,11 @@ private fun PlayerBody(
                                     text = {
                                         Text(
                                             "无字幕",
-                                            color = if (selectedTrackId == null) PwAccent else Color.Unspecified
+                                            color = if (selectedTrackId == null && pendingTrackId == null) {
+                                                PwAccent
+                                            } else {
+                                                Color.Unspecified
+                                            }
                                         )
                                     },
                                     onClick = {
@@ -1284,7 +1304,7 @@ private fun PlayerBody(
                                                 track.displayLabel(),
                                                 color = when {
                                                     !supported -> Color.Gray
-                                                    selectedTrackId == tid -> PwAccent
+                                                    selectedTrackId == tid || pendingTrackId == tid -> PwAccent
                                                     else -> Color.Unspecified
                                                 }
                                             )
@@ -1503,13 +1523,13 @@ private fun PlayerBody(
                             Icon(
                                 Icons.Default.ClosedCaption,
                                 contentDescription = null,
-                                tint = if (selectedTrackId != null) PwAccent else Color.White,
+                                tint = if (selectedTrackId != null || pendingTrackId != null) PwAccent else Color.White,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(Modifier.width(4.dp))
                             Text(
                                 "字幕",
-                                color = if (selectedTrackId != null) PwAccent else Color.White
+                                color = if (selectedTrackId != null || pendingTrackId != null) PwAccent else Color.White
                             )
                         }
                         Box {
@@ -1774,7 +1794,7 @@ private fun PlayerBody(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            if (selectedTrackId != null) "已选字幕 · 点击切换" else "选择字幕",
+                            if (selectedTrackId != null || pendingTrackId != null) "已选字幕 · 点击切换" else "选择字幕",
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
