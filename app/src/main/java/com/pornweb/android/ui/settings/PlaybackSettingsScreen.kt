@@ -46,6 +46,10 @@ fun PlaybackSettingsScreen(onBack: () -> Unit) {
     var doubleTap by remember { mutableStateOf(prefs.doubleTapSeek) }
     var leftRewind by remember { mutableStateOf(prefs.leftLongPressRewind) }
     var resumeOnOpen by remember { mutableStateOf(prefs.resumeOnOpen) }
+    var autoHideSec by remember { mutableIntStateOf((prefs.autoHideControlsMs / 1000).coerceIn(1, 30)) }
+    var showRemaining by remember { mutableStateOf(prefs.showRemainingTime) }
+    var rememberSpeed by remember { mutableStateOf(prefs.rememberSpeed) }
+    var continuousNext by remember { mutableStateOf(prefs.continuousPlayNextPart) }
 
     Column(
         Modifier
@@ -60,7 +64,7 @@ fun PlaybackSettingsScreen(onBack: () -> Unit) {
             Text("播放设置", style = MaterialTheme.typography.headlineMedium)
         }
         Text(
-            "参考 MX Player / KMPlayer / Emby / Jellyfin",
+            "对齐 VidHub / MX Player / Emby",
             color = PwMuted,
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(start = 48.dp, bottom = 12.dp)
@@ -74,10 +78,11 @@ fun PlaybackSettingsScreen(onBack: () -> Unit) {
         ) {
             defaultSpeed = it
             prefs.defaultSpeed = it
+            if (!prefs.rememberSpeed) prefs.lastSpeed = it
         }
 
-        SectionTitle("长按倍速（MX / KMPlayer）")
-        Text("按住屏幕右侧临时加速；松开恢复", color = PwMuted, style = MaterialTheme.typography.bodySmall)
+        SectionTitle("长按倍速")
+        Text("按住画面临时加速；松开恢复", color = PwMuted, style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(6.dp))
         ChipRow(
             options = listOf(2.0f, 3.0f, 4.0f),
@@ -88,7 +93,7 @@ fun PlaybackSettingsScreen(onBack: () -> Unit) {
             prefs.longPressSpeed = it
         }
 
-        SectionTitle("左右双击跳过")
+        SectionTitle("跳过间隔（双击 / 底栏按钮）")
         ChipRow(
             options = listOf(5, 10, 15, 30),
             selected = skipSeconds,
@@ -110,14 +115,36 @@ fun PlaybackSettingsScreen(onBack: () -> Unit) {
             prefs.swipeSeekSeconds = it
         }
 
+        SectionTitle("控制栏自动隐藏")
+        ChipRow(
+            options = listOf(2, 3, 4, 5, 8, 10),
+            selected = autoHideSec,
+            label = { "${it}s" }
+        ) {
+            autoHideSec = it
+            prefs.autoHideControlsMs = it * 1000
+        }
+
         Spacer(Modifier.height(16.dp))
-        SwitchRow("启用双击快进/快退", doubleTap) {
+        SwitchRow("启用三分区双击（左退 / 中暂停 / 右进）", doubleTap) {
             doubleTap = it
             prefs.doubleTapSeek = it
         }
         SwitchRow("左侧长按倒退（右侧长按加速）", leftRewind) {
             leftRewind = it
             prefs.leftLongPressRewind = it
+        }
+        SwitchRow("记住上次播放倍速", rememberSpeed) {
+            rememberSpeed = it
+            prefs.rememberSpeed = it
+        }
+        SwitchRow("分集播完自动连播下一集", continuousNext) {
+            continuousNext = it
+            prefs.continuousPlayNextPart = it
+        }
+        SwitchRow("进度条右侧显示剩余时长", showRemaining) {
+            showRemaining = it
+            prefs.showRemainingTime = it
         }
         SwitchRow("打开播放器时优先横屏", startLandscape) {
             startLandscape = it
@@ -130,7 +157,7 @@ fun PlaybackSettingsScreen(onBack: () -> Unit) {
 
         Spacer(Modifier.height(24.dp))
         Text(
-            "提示：播放页也可点右上角齿轮进入本页。锁定后手势会暂停，需先解锁。",
+            "提示：播放页左栏锁定/旋转/选集，右栏截图/铺满/字幕/倍速；右上角 ⋯ 可切换音轨。锁定后仅可点解锁。",
             color = PwMuted,
             style = MaterialTheme.typography.bodySmall
         )
