@@ -79,6 +79,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.onSizeChanged
@@ -471,7 +476,7 @@ private fun PlayerBody(
             return
         }
         subtitleLoading = true
-        subtitleHint = "准备中"
+        subtitleHint = null
         val job = scope.launch {
             try {
                 val local = prefetchSubtitleVtt(trackId)
@@ -508,7 +513,6 @@ private fun PlayerBody(
             } finally {
                 if (subtitlePrefetchJob === coroutineContext[Job]) {
                     subtitleLoading = false
-                    if (subtitleHint == "准备中") subtitleHint = null
                 }
             }
         }
@@ -1031,36 +1035,65 @@ private fun PlayerBody(
                     .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                     .padding(12.dp)
             )
-        } else if ((subtitleLoading || subtitleHint != null) && activeSubtitleText == null) {
-            // Non-blocking hint only — never a fullscreen spinner while preparing subs.
-            Text(
-                subtitleHint ?: "准备中",
-                color = Color.White,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 88.dp)
-                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
-            )
         } else if (buffering && !subtitleLoading && swipeHint == null && speedHint == null &&
             brightnessHint == null && volumeHint == null
         ) {
             Text("缓冲中…", color = Color.White, modifier = Modifier.align(Alignment.Center))
         }
 
-        // Compose subtitle overlay (WebVTT cues), independent of ExoPlayer MediaItem.
+        // Tiny corner chip only — never a large center/bottom card blocking faces.
+        val subtitleChip = when {
+            subtitleLoading && activeSubtitleText == null -> "准备中…"
+            !subtitleHint.isNullOrBlank() && activeSubtitleText == null -> subtitleHint
+            else -> null
+        }
+        if (subtitleChip != null) {
+            Text(
+                subtitleChip,
+                color = Color.White.copy(alpha = 0.55f),
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(
+                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+                        )
+                    )
+                    .padding(end = 10.dp, bottom = 78.dp)
+            )
+        }
+
+        // Compose subtitle overlay (WebVTT cues): white + thin black outline, no box.
         val cueText = activeSubtitleText
         if (!cueText.isNullOrBlank()) {
-            Text(
-                cueText,
-                color = Color.White,
-                style = MaterialTheme.typography.titleMedium,
+            val cueStyle = MaterialTheme.typography.titleMedium.copy(
+                fontSize = 18.sp,
+                shadow = Shadow(
+                    color = Color.Black.copy(alpha = 0.85f),
+                    offset = Offset(0f, 1.2f),
+                    blurRadius = 2.5f
+                )
+            )
+            Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(start = 24.dp, end = 24.dp, bottom = 72.dp)
-                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            )
+                    .padding(start = 28.dp, end = 28.dp, bottom = 76.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    cueText,
+                    style = cueStyle.copy(
+                        color = Color.Black,
+                        drawStyle = Stroke(width = 4.5f, miter = 2f, join = StrokeJoin.Round)
+                    ),
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    cueText,
+                    style = cueStyle.copy(color = Color.White),
+                    textAlign = TextAlign.Center
+                )
+            }
         }
 
         val centerHint = brightnessHint ?: volumeHint ?: swipeHint
@@ -1121,7 +1154,8 @@ private fun PlayerBody(
                         applyOrient(orientMode, false)
                     },
                     onToggleOrient = {},
-                    onParts = {}
+                    onParts = {},
+                    collapsible = false
                 )
             }
         }
@@ -1235,6 +1269,8 @@ private fun PlayerBody(
                         showSubtitleMenu = true
                         controlsVisible = true
                     },
+                    collapsible = true,
+                    startCollapsed = orientLandscape,
                     modifier = Modifier.align(Alignment.CenterEnd)
                 )
 
