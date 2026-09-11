@@ -59,6 +59,7 @@ import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -186,6 +187,8 @@ fun PlayerScreen(
         }
     }
 
+    // Never force portrait: default FULL_SENSOR; optional start-landscape lock via prefs/toggle.
+    // Manifest also uses fullSensor — player must rotate freely for MX bottom-bar chrome.
     DisposableEffect(Unit) {
         val prev = activity.requestedOrientation
         activity.requestedOrientation = if (prefs.startLandscape) {
@@ -195,7 +198,13 @@ fun PlayerScreen(
         }
         activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose {
-            activity.requestedOrientation = prev
+            // Restore prior; prefer sensor if somehow unset so we never leave a portrait lock behind.
+            activity.requestedOrientation =
+                if (prev == ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED) {
+                    ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+                } else {
+                    prev
+                }
             activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
@@ -477,13 +486,12 @@ private fun PlayerBody(
     }
 
     fun applySubtitleSelection(trackId: String?) {
-        // Cancel any in-flight prefetch; its finally must not clear loading for the new job
-        // (identity check against subtitlePrefetchJob remains below).
+        // Cancel prior prefetch and clear preparing UI immediately so 「准备中」 cannot linger.
         subtitlePrefetchJob?.cancel()
         subtitlePrefetchJob = null
+        subtitleLoading = false
+        subtitleHint = null
         if (trackId == null) {
-            subtitleLoading = false
-            subtitleHint = null
             clearOverlaySubtitles()
             return
         }
@@ -491,21 +499,44 @@ private fun PlayerBody(
         if (trackId == selectedTrackId && pendingTrackId == null && overlayCues.isNotEmpty()) {
             return
         }
-        // Switching to a different track (or re-preparing): drop old overlay immediately so
-        // the previous language does not linger while the new VTT prepares. Never reprepare Exo.
+        // Switching: drop old overlay immediately so the previous language does not linger.
+        // Never reprepare Exo — overlay path only.
         overlayCues = emptyList()
         activeSubtitleText = null
         cachedSubtitleUri = null
         selectedTrackId = null // only commit when new cues are ready
         pendingTrackId = trackId
-        subtitleLoading = true
-        subtitleHint = null
+
+        // Prefer silent switch when local VTT exists or track list marks cached.
+        val localFile = subtitleCacheFile(trackId)
+        val diskReady = localFile.isFile && localFile.length() > 0L
+        if (diskReady) {
+            val local = Uri.fromFile(localFile)
+            val cues = loadOverlayCuesFromUri(local)
+            if (cues.isNotEmpty()) {
+                selectedTrackId = trackId
+                pendingTrackId = null
+                cachedSubtitleUri = local
+                overlayCues = cues
+                activeSubtitleText = WebVttParser.activeText(cues, player.currentPosition)
+                return
+            }
+        }
+        val trackMeta = subtitleTracks.find { it.trackId() == trackId }
+        // cached == true → silent (no loading UI). Unknown/false → light corner indicator only.
+        val showLoading = trackMeta?.cached != true
+        if (showLoading) {
+            subtitleLoading = true
+        }
+
         val job = scope.launch {
             try {
                 val local = prefetchSubtitleVtt(trackId)
                 if (!isActive) return@launch
                 if (local == null) {
+                    // Timeout / error / unavailable — force-clear preparing UI.
                     if (pendingTrackId == trackId) pendingTrackId = null
+                    subtitleLoading = false
                     Toast.makeText(context, "字幕加载失败", Toast.LENGTH_SHORT).show()
                     subtitleHint = "字幕加载失败"
                     delay(1800)
@@ -516,6 +547,7 @@ private fun PlayerBody(
                 if (!isActive) return@launch
                 if (cues.isEmpty()) {
                     if (pendingTrackId == trackId) pendingTrackId = null
+                    subtitleLoading = false
                     Toast.makeText(context, "字幕解析失败", Toast.LENGTH_SHORT).show()
                     subtitleHint = "字幕解析失败"
                     delay(1800)
@@ -528,11 +560,13 @@ private fun PlayerBody(
                 overlayCues = cues
                 // Drive active line immediately from current position (no ExoPlayer reprepare).
                 activeSubtitleText = WebVttParser.activeText(cues, player.currentPosition)
+                subtitleLoading = false
                 subtitleHint = null
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
                 if (pendingTrackId == trackId) pendingTrackId = null
+                subtitleLoading = false
                 Toast.makeText(context, "字幕加载失败", Toast.LENGTH_SHORT).show()
                 subtitleHint = "字幕加载失败"
                 delay(1800)
@@ -807,8 +841,10 @@ private fun PlayerBody(
     val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }.coerceAtLeast(1f)
     val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }.coerceAtLeast(1f)
     val speedOptions = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f)
-    val orientLandscape = orientMode == OrientMode.Landscape ||
-        (orientMode == OrientMode.Sensor && configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
+    // Layout truth: follow current configuration so MX bottom-bar chrome works in landscape.
+    // OrientMode.Landscape also counts (sensor-landscape lock during brief config lag).
+    val orientLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ||
+        orientMode == OrientMode.Landscape
 
     val rightTimeLabel = if (showRemaining && durationMs > 0) {
         val rem = (durationMs - (if (seeking) seekValue.toLong() else positionMs)).coerceAtLeast(0L)
@@ -1068,25 +1104,27 @@ private fun PlayerBody(
             Text("缓冲中…", color = Color.White, modifier = Modifier.align(Alignment.Center))
         }
 
-        // Tiny corner chip only — never a large center/bottom card blocking faces.
-        val subtitleChip = when {
-            subtitleLoading && activeSubtitleText == null -> "准备中…"
-            !subtitleHint.isNullOrBlank() && activeSubtitleText == null -> subtitleHint
-            else -> null
-        }
-        if (subtitleChip != null) {
+        // Uncached only: tiny corner progress — never 「准备中」 label / large card.
+        val subtitleCornerPad = Modifier
+            .align(Alignment.BottomEnd)
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.only(
+                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+                )
+            )
+            .padding(end = 10.dp, bottom = 118.dp)
+        if (subtitleLoading && activeSubtitleText == null) {
+            CircularProgressIndicator(
+                modifier = subtitleCornerPad.size(14.dp),
+                strokeWidth = 1.5.dp,
+                color = Color.White.copy(alpha = 0.55f)
+            )
+        } else if (!subtitleHint.isNullOrBlank() && activeSubtitleText == null) {
             Text(
-                subtitleChip,
+                subtitleHint!!,
                 color = Color.White.copy(alpha = 0.55f),
                 style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .windowInsetsPadding(
-                        WindowInsets.safeDrawing.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                        )
-                    )
-                    .padding(end = 10.dp, bottom = 118.dp)
+                modifier = subtitleCornerPad
             )
         }
 
@@ -1271,13 +1309,6 @@ private fun PlayerBody(
                                 )
                             }
                             else -> {
-                                if (subtitleLoading) {
-                                    DropdownMenuItem(
-                                        text = { Text("准备中…") },
-                                        onClick = { },
-                                        enabled = false
-                                    )
-                                }
                                 DropdownMenuItem(
                                     text = {
                                         Text(
@@ -1298,16 +1329,26 @@ private fun PlayerBody(
                                 subtitleTracks.forEach { track ->
                                     val tid = track.trackId()
                                     val supported = track.isSupported()
+                                    val rowPending = pendingTrackId == tid && subtitleLoading
                                     DropdownMenuItem(
                                         text = {
-                                            Text(
-                                                track.displayLabel(),
-                                                color = when {
-                                                    !supported -> Color.Gray
-                                                    selectedTrackId == tid || pendingTrackId == tid -> PwAccent
-                                                    else -> Color.Unspecified
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    track.displayLabel(),
+                                                    color = when {
+                                                        !supported -> Color.Gray
+                                                        selectedTrackId == tid || pendingTrackId == tid -> PwAccent
+                                                        else -> Color.Unspecified
+                                                    }
+                                                )
+                                                if (rowPending) {
+                                                    Spacer(Modifier.width(8.dp))
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(12.dp),
+                                                        strokeWidth = 1.5.dp
+                                                    )
                                                 }
-                                            )
+                                            }
                                         },
                                         enabled = supported,
                                         onClick = {
