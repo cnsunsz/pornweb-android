@@ -223,14 +223,35 @@ class AppContainer(context: Context) {
                 try {
                     val body = gson.fromJson(raw, ApiErrorBody::class.java)
                     val d = body.detail
-                    if (d != null) {
-                        if (d.isJsonPrimitive) return d.asString
+                    if (d != null && !d.isJsonNull) {
+                        if (d.isJsonPrimitive) {
+                            val s = d.asString.trim()
+                            if (s.isNotEmpty()) return s
+                        }
                         if (d.isJsonArray && d.asJsonArray.size() > 0) {
-                            val first = d.asJsonArray[0]
-                            if (first.isJsonObject && first.asJsonObject.has("msg")) {
-                                return first.asJsonObject.get("msg").asString
+                            val msgs = d.asJsonArray.mapNotNull { item ->
+                                when {
+                                    item.isJsonPrimitive -> item.asString.trim().takeIf { it.isNotEmpty() }
+                                    item.isJsonObject -> {
+                                        val o = item.asJsonObject
+                                        (o.get("msg") ?: o.get("message") ?: o.get("detail"))
+                                            ?.takeIf { it.isJsonPrimitive }
+                                            ?.asString
+                                            ?.trim()
+                                            ?.takeIf { it.isNotEmpty() }
+                                    }
+                                    else -> null
+                                }
                             }
-                            return first.toString()
+                            if (msgs.isNotEmpty()) return msgs.joinToString("；")
+                        }
+                        if (d.isJsonObject) {
+                            val o = d.asJsonObject
+                            val msg = (o.get("msg") ?: o.get("message"))
+                                ?.takeIf { it.isJsonPrimitive }
+                                ?.asString
+                                ?.trim()
+                            if (!msg.isNullOrEmpty()) return msg
                         }
                     }
                 } catch (_: Exception) {
@@ -238,6 +259,7 @@ class AppContainer(context: Context) {
                 }
             }
             if (e.code() == 401) return "登录已过期，请重新登录"
+            if (e.code() == 400) return "请求无效"
             return "请求失败 (${e.code()})"
         }
         return e.message?.ifBlank { "网络错误" } ?: "网络错误"

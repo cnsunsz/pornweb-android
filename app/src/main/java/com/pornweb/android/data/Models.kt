@@ -25,7 +25,12 @@ data class AuthResponse(
 
 data class LoginRequest(val username: String, val password: String)
 
-data class RegisterRequest(val username: String, val email: String, val password: String)
+data class RegisterRequest(
+    val username: String,
+    val email: String,
+    val password: String,
+    @SerializedName("invite_code") val inviteCode: String
+)
 
 data class PasswordChangeRequest(
     @SerializedName("old_password") val oldPassword: String,

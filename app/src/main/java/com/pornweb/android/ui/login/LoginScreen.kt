@@ -20,8 +20,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -41,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.pornweb.android.PornWebApp
 import com.pornweb.android.data.LoginRequest
@@ -51,6 +57,9 @@ import com.pornweb.android.ui.theme.PwBg
 import com.pornweb.android.ui.theme.PwMuted
 import com.pornweb.android.ui.theme.PwSurface
 import kotlinx.coroutines.launch
+
+private fun normalizeInviteCode(raw: String): String =
+    raw.trim().replace("-", "").replace(" ", "")
 
 @Composable
 fun LoginScreen(
@@ -64,6 +73,8 @@ fun LoginScreen(
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
+    var inviteCode by remember { mutableStateOf("") }
+    var inviteVisible by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -94,6 +105,11 @@ fun LoginScreen(
             error = "请输入邮箱"
             return
         }
+        val normalizedInvite = normalizeInviteCode(inviteCode)
+        if (registerMode && normalizedInvite.isBlank()) {
+            error = "请输入授权码"
+            return
+        }
         if (password.length < 6 && registerMode) {
             error = "密码至少 6 位"
             return
@@ -103,7 +119,14 @@ fun LoginScreen(
             error = null
             try {
                 val resp = if (registerMode) {
-                    container.api.register(RegisterRequest(username.trim(), email.trim(), password))
+                    container.api.register(
+                        RegisterRequest(
+                            username = username.trim(),
+                            email = email.trim(),
+                            password = password,
+                            inviteCode = normalizedInvite
+                        )
+                    )
                 } else {
                     container.api.login(LoginRequest(username.trim(), password))
                 }
@@ -187,6 +210,40 @@ fun LoginScreen(
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                         modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = inviteCode,
+                        onValueChange = { inviteCode = it },
+                        label = { Text("授权码") },
+                        singleLine = true,
+                        visualTransformation = if (inviteVisible) {
+                            VisualTransformation.None
+                        } else {
+                            PasswordVisualTransformation()
+                        },
+                        trailingIcon = {
+                            IconButton(onClick = { inviteVisible = !inviteVisible }) {
+                                Icon(
+                                    imageVector = if (inviteVisible) {
+                                        Icons.Filled.VisibilityOff
+                                    } else {
+                                        Icons.Filled.Visibility
+                                    },
+                                    contentDescription = if (inviteVisible) "隐藏授权码" else "显示授权码"
+                                )
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        "由管理员发放；无连字符大小写均可",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PwMuted,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp)
                     )
                 }
                 Spacer(Modifier.height(8.dp))
