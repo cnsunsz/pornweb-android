@@ -272,6 +272,10 @@ class AppContainer(context: Context) {
         return resp
     }
 
+    suspend fun deleteAccount(password: String): DeleteAccountResponse {
+        return api.deleteAccount(DeleteAccountRequest(password = password))
+    }
+
     fun notifyAccessExpired() {
         _accessExpired.tryEmit(Unit)
     }

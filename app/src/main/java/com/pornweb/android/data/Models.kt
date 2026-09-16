@@ -62,6 +62,15 @@ data class PasswordChangeRequest(
     @SerializedName("new_password") val newPassword: String
 )
 
+data class DeleteAccountRequest(
+    val password: String
+)
+
+data class DeleteAccountResponse(
+    val ok: Boolean? = null,
+    val message: String? = null
+)
+
 data class ProgressRequest(
     val position: Double,
     val duration: Double,

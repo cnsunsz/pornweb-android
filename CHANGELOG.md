@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+### 新增
+- 「我的」普通用户可注销账户（`POST /api/auth/delete-account`，需密码确认；管理员不可自销）
+
+
 ## v1.0.31
 ### 改进
 - 「我的」常显授权码续期填码区（`POST /api/auth/activate`），未到期也可续

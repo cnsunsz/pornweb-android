@@ -1,19 +1,25 @@
 package com.pornweb.android.ui.settings
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -51,6 +57,7 @@ fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit, onPlayback
     var message by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var showRenew by remember { mutableStateOf(false) }
+    var showDeleteAccount by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -61,6 +68,16 @@ fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit, onPlayback
         AccessRenewDialog(
             onDismiss = { showRenew = false },
             onActivated = { scope.launch { c.refreshCurrentUser() } }
+        )
+    }
+
+    if (showDeleteAccount) {
+        DeleteAccountConfirmDialog(
+            onDismiss = { showDeleteAccount = false },
+            onDeleted = {
+                c.tokenStore.clear()
+                onLoggedOut()
+            }
         )
     }
 
@@ -158,6 +175,32 @@ fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit, onPlayback
             },
             modifier = Modifier.fillMaxWidth()
         ) { Text("更新密码") }
+        if (user != null) {
+            Spacer(Modifier.height(32.dp))
+            Text("账户", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            if (user?.isAdmin == true) {
+                Text(
+                    "管理员账户不可自行注销",
+                    color = PwMuted,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            } else {
+                OutlinedButton(
+                    onClick = { showDeleteAccount = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) { Text("注销账户") }
+                Text(
+                    "注销后无法恢复，请谨慎操作",
+                    color = PwMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        }
         Spacer(Modifier.height(32.dp))
         Button(
             onClick = {
@@ -246,6 +289,99 @@ private fun formatAccessExpiresAt(raw: String): String {
             trimmed
         }
     }
+}
+
+
+@Composable
+private fun DeleteAccountConfirmDialog(
+    onDismiss: () -> Unit,
+    onDeleted: () -> Unit
+) {
+    val app = LocalContext.current.applicationContext as PornWebApp
+    val c = app.container
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var password by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    fun submit() {
+        if (password.isBlank()) {
+            error = "请输入当前密码以确认注销"
+            return
+        }
+        scope.launch {
+            busy = true
+            error = null
+            try {
+                val resp = c.deleteAccount(password)
+                val msg = resp.message?.takeIf { it.isNotBlank() } ?: "账户已注销"
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                onDeleted()
+                onDismiss()
+            } catch (e: Exception) {
+                error = c.parseError(e)
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("注销账户") },
+        text = {
+            Column {
+                Text(
+                    "此操作不可恢复。请输入当前密码以确认注销。",
+                    color = PwMuted,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("当前密码") },
+                    singleLine = true,
+                    enabled = !busy,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (error != null) {
+                    Text(
+                        error!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { submit() },
+                enabled = !busy,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                if (busy) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text("确认注销")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !busy) {
+                Text("取消")
+            }
+        }
+    )
 }
 
 @Composable

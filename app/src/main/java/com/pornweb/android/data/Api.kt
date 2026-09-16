@@ -25,6 +25,9 @@ interface ApiService {
     @POST("api/auth/activate")
     suspend fun activate(@Body body: ActivateRequest): ActivateResponse
 
+    @POST("api/auth/delete-account")
+    suspend fun deleteAccount(@Body body: DeleteAccountRequest): DeleteAccountResponse
+
     @GET("api/media/list")
     suspend fun mediaList(
         @Query("page") page: Int = 1,
