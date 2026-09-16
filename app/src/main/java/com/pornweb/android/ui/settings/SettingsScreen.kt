@@ -32,6 +32,7 @@ import com.pornweb.android.PornWebApp
 import com.pornweb.android.data.PasswordChangeRequest
 import com.pornweb.android.data.User
 import com.pornweb.android.ui.components.AccessRenewDialog
+import com.pornweb.android.ui.components.AccessRenewForm
 import com.pornweb.android.ui.components.AccessStatusBanner
 import com.pornweb.android.ui.theme.PwMuted
 import java.time.Instant
@@ -79,8 +80,10 @@ fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit, onPlayback
         AccessStatusBanner(user = user, onRenew = { showRenew = true })
         if (user != null) {
             MembershipAuthBlock(user = user!!)
-            OutlinedButton(onClick = { showRenew = true }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                Text("授权码续期")
+            if (user?.isAdmin != true) {
+                AccessRenewForm(
+                    onActivated = { scope.launch { c.refreshCurrentUser() } }
+                )
             }
         }
         Spacer(Modifier.height(24.dp))

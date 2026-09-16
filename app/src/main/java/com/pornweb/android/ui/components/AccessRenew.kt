@@ -89,6 +89,104 @@ fun AccessStatusBanner(
     }
 }
 
+
+@Composable
+fun AccessRenewForm(
+    onActivated: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val app = LocalContext.current.applicationContext as PornWebApp
+    val c = app.container
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var code by remember { mutableStateOf("") }
+    var visible by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    fun submit() {
+        val normalized = c.normalizeInviteCode(code)
+        if (normalized.isBlank()) {
+            error = "请输入授权码"
+            return
+        }
+        scope.launch {
+            busy = true
+            error = null
+            try {
+                val resp = c.activateAccess(normalized)
+                val msg = resp.message?.takeIf { it.isNotBlank() } ?: "续期成功"
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                code = ""
+                onActivated()
+            } catch (e: Exception) {
+                error = c.parseError(e)
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    Column(modifier = modifier.fillMaxWidth().padding(top = 12.dp)) {
+        Text("授权码续期", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "输入管理员发放的授权码以续期访问权限（未到期也可续）",
+            color = PwMuted,
+            style = MaterialTheme.typography.bodySmall
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = code,
+            onValueChange = { code = it },
+            label = { Text("授权码") },
+            singleLine = true,
+            enabled = !busy,
+            visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { visible = !visible }) {
+                    Icon(
+                        imageVector = if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                        contentDescription = if (visible) "隐藏授权码" else "显示授权码"
+                    )
+                }
+            },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Text(
+            "无连字符大小写均可",
+            color = PwMuted,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+        if (error != null) {
+            Text(
+                error!!,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = { submit() },
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (busy) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+            } else {
+                Text("提交续期")
+            }
+        }
+    }
+}
+
 @Composable
 fun AccessRenewDialog(
     onDismiss: () -> Unit,

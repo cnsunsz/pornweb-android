@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.31
+### 改进
+- 「我的」常显授权码续期填码区（`POST /api/auth/activate`），未到期也可续
+
 ## v1.0.30
 ### 改进
 - 「我的」常显会员剩余天数与到期时间（`access_days_left` / `access_expires_at`），不限到期才提示
