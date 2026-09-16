@@ -14,8 +14,23 @@ data class User(
     val email: String? = null,
     @SerializedName("is_admin") val isAdmin: Boolean? = null,
     val avatar: String? = null,
-    @SerializedName("created_at") val createdAt: String? = null
-)
+    @SerializedName("created_at") val createdAt: String? = null,
+    /** ISO8601 expiry; null = permanent */
+    @SerializedName("access_expires_at") val accessExpiresAt: String? = null,
+    @SerializedName("access_active") val accessActive: Boolean? = null,
+    /** null = permanent/admin; 0 = expired; else remaining whole days */
+    @SerializedName("access_days_left") val accessDaysLeft: Int? = null
+) {
+    /** Non-admin with inactive access needs renew. */
+    fun needsAccessRenew(): Boolean = isAdmin != true && accessActive == false
+
+    /** Optional soft warning when still active but few days left. */
+    fun accessExpiringSoon(thresholdDays: Int = 7): Boolean {
+        if (isAdmin == true || accessActive == false) return false
+        val left = accessDaysLeft ?: return false
+        return left in 1..thresholdDays
+    }
+}
 
 data class AuthResponse(
     @SerializedName("access_token") val accessToken: String? = null,
@@ -30,6 +45,16 @@ data class RegisterRequest(
     val email: String,
     val password: String,
     @SerializedName("invite_code") val inviteCode: String
+)
+
+data class ActivateRequest(
+    @SerializedName("invite_code") val inviteCode: String
+)
+
+data class ActivateResponse(
+    val ok: Boolean? = null,
+    val message: String? = null,
+    val user: User? = null
 )
 
 data class PasswordChangeRequest(

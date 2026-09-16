@@ -22,6 +22,9 @@ interface ApiService {
     @GET("api/auth/me")
     suspend fun me(): User
 
+    @POST("api/auth/activate")
+    suspend fun activate(@Body body: ActivateRequest): ActivateResponse
+
     @GET("api/media/list")
     suspend fun mediaList(
         @Query("page") page: Int = 1,

@@ -29,6 +29,8 @@ import androidx.compose.ui.unit.dp
 import com.pornweb.android.BuildConfig
 import com.pornweb.android.PornWebApp
 import com.pornweb.android.data.PasswordChangeRequest
+import com.pornweb.android.ui.components.AccessRenewDialog
+import com.pornweb.android.ui.components.AccessStatusBanner
 import com.pornweb.android.ui.theme.PwMuted
 import kotlinx.coroutines.launch
 
@@ -42,7 +44,15 @@ fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit, onPlayback
     var newPw by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showRenew by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    if (showRenew) {
+        AccessRenewDialog(
+            onDismiss = { showRenew = false },
+            onActivated = { scope.launch { c.refreshCurrentUser() } }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -55,6 +65,21 @@ fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit, onPlayback
         Text(user?.username ?: "未登录", style = MaterialTheme.typography.titleMedium)
         if (!user?.email.isNullOrBlank()) {
             Text(user?.email ?: "", color = PwMuted, style = MaterialTheme.typography.bodySmall)
+        }
+        Spacer(Modifier.height(12.dp))
+        AccessStatusBanner(user = user, onRenew = { showRenew = true })
+        val accessLabel = when {
+            user?.isAdmin == true -> "管理员（永久）"
+            user?.accessActive == false -> "已过期"
+            user?.accessDaysLeft == null && user?.accessActive == true -> "永久授权"
+            user?.accessDaysLeft != null -> "剩余 ${user?.accessDaysLeft} 天"
+            else -> null
+        }
+        if (accessLabel != null) {
+            Text("访问权限：$accessLabel", color = PwMuted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+        }
+        OutlinedButton(onClick = { showRenew = true }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+            Text("授权码续期")
         }
         Spacer(Modifier.height(24.dp))
         Text("服务器", style = MaterialTheme.typography.titleMedium)

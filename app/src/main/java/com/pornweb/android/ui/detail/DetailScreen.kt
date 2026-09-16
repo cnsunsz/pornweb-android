@@ -42,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,10 +59,13 @@ import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.pornweb.android.PornWebApp
 import com.pornweb.android.data.AppContainer
+import com.pornweb.android.ui.components.AccessExpiredErrorPanel
+import com.pornweb.android.ui.components.AccessRenewDialog
 import com.pornweb.android.data.MediaItem
 import com.pornweb.android.ui.theme.PwMuted
 import com.pornweb.android.ui.theme.PwPlaceholder
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun DetailScreen(
@@ -77,7 +81,32 @@ fun DetailScreen(
     var part by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(true) }
     var snackMsg by remember { mutableStateOf<String?>(null) }
+    var showRenew by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    if (showRenew) {
+        AccessRenewDialog(
+            onDismiss = { showRenew = false },
+            onActivated = {
+                scope.launch {
+                    c.refreshCurrentUser()
+                    // reload detail after renew
+                    loading = true
+                    error = null
+                    try {
+                        val d = c.api.detail(id)
+                        item = d
+                        part = d.progressPart ?: 0
+                    } catch (e: Exception) {
+                        error = c.parseError(e)
+                    } finally {
+                        loading = false
+                    }
+                }
+            }
+        )
+    }
 
     LaunchedEffect(snackMsg) {
         if (snackMsg != null) {
@@ -104,7 +133,17 @@ fun DetailScreen(
     Box(Modifier.fillMaxSize()) {
         when {
             loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            error != null -> Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.align(Alignment.Center).padding(24.dp))
+            error != null -> {
+                if (c.isAccessExpiredDetail(error)) {
+                    AccessExpiredErrorPanel(
+                        message = error!!,
+                        onRenew = { showRenew = true },
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                } else {
+                    Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.align(Alignment.Center).padding(24.dp))
+                }
+            }
             media != null -> {
                 val fanart = c.resolveImage(media, "fanart")
                 val poster = c.resolveImage(media, "poster")

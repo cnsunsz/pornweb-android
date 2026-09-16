@@ -17,10 +17,18 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -29,6 +37,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.pornweb.android.PornWebApp
+import com.pornweb.android.ui.components.AccessRenewDialog
 import com.pornweb.android.ui.actors.ActorMediaScreen
 import com.pornweb.android.ui.actors.ActorsScreen
 import com.pornweb.android.ui.connect.ServerConnectScreen
@@ -44,6 +53,7 @@ import com.pornweb.android.ui.theme.PwAccent
 import com.pornweb.android.ui.theme.PwBg
 import com.pornweb.android.ui.theme.PwSurface
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 private data class Tab(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
@@ -73,6 +83,10 @@ fun PornWebRoot() {
             // playback_settings is a subpage without bottom bar
     }
 
+    var showAccessRenew by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     LaunchedEffect(Unit) {
         c.unauthorized.collectLatest {
             nav.navigate("login") {
@@ -80,6 +94,29 @@ fun PornWebRoot() {
                 launchSingleTop = true
             }
         }
+    }
+
+    LaunchedEffect(Unit) {
+        c.accessExpired.collectLatest {
+            showAccessRenew = true
+        }
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && c.tokenStore.hasToken()) {
+                scope.launch { c.refreshCurrentUser() }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    if (showAccessRenew) {
+        AccessRenewDialog(
+            onDismiss = { showAccessRenew = false },
+            onActivated = { scope.launch { c.refreshCurrentUser() } }
+        )
     }
 
     Scaffold(

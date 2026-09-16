@@ -58,9 +58,6 @@ import com.pornweb.android.ui.theme.PwMuted
 import com.pornweb.android.ui.theme.PwSurface
 import kotlinx.coroutines.launch
 
-private fun normalizeInviteCode(raw: String): String =
-    raw.trim().replace("-", "").replace(" ", "")
-
 @Composable
 fun LoginScreen(
     registerMode: Boolean,
@@ -105,7 +102,7 @@ fun LoginScreen(
             error = "请输入邮箱"
             return
         }
-        val normalizedInvite = normalizeInviteCode(inviteCode)
+        val normalizedInvite = container.normalizeInviteCode(inviteCode)
         if (registerMode && normalizedInvite.isBlank()) {
             error = "请输入授权码"
             return
@@ -137,6 +134,10 @@ fun LoginScreen(
                     container.tokenStore.token = token
                     container.tokenStore.user = resp.user
                     container.serverStore.connected = true
+                    try {
+                        container.refreshCurrentUser()
+                    } catch (_: Exception) {
+                    }
                     onLoggedIn()
                 }
             } catch (e: Exception) {

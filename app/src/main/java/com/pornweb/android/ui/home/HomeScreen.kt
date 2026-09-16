@@ -18,11 +18,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +38,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -43,6 +49,8 @@ import com.pornweb.android.PornWebApp
 import com.pornweb.android.data.LibraryItem
 import com.pornweb.android.data.MediaItem
 import com.pornweb.android.ui.components.BrandLogo
+import com.pornweb.android.ui.components.AccessRenewDialog
+import com.pornweb.android.ui.components.AccessStatusBanner
 import com.pornweb.android.ui.components.PosterCard
 import com.pornweb.android.ui.components.PosterGridCard
 import com.pornweb.android.ui.theme.PwAccent
@@ -58,16 +66,20 @@ import kotlinx.coroutines.launch
 fun HomeScreen(onOpenMedia: (Long) -> Unit, onOpenLibrary: (String?) -> Unit) {
     val app = LocalContext.current.applicationContext as PornWebApp
     val c = app.container
+    val user by c.tokenStore.userFlow.collectAsState()
     var continueItems by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
     var latest by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
     var libraries by remember { mutableStateOf<List<LibraryItem>>(emptyList()) }
     var refreshing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showRenew by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     suspend fun load() {
         coroutineScope {
             error = null
+            launch { c.refreshCurrentUser() }
             val cont = async {
                 try { c.api.continueWatching().items.orEmpty() } catch (_: Exception) { emptyList() }
             }
@@ -89,6 +101,25 @@ fun HomeScreen(onOpenMedia: (Long) -> Unit, onOpenLibrary: (String?) -> Unit) {
     LaunchedEffect(Unit) {
         refreshing = true
         try { load() } finally { refreshing = false }
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                scope.launch { c.refreshCurrentUser() }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    if (showRenew) {
+        AccessRenewDialog(
+            onDismiss = { showRenew = false },
+            onActivated = {
+                scope.launch { c.refreshCurrentUser() }
+            }
+        )
     }
 
     PullToRefreshBox(isRefreshing = refreshing, onRefresh = {
@@ -122,9 +153,25 @@ fun HomeScreen(onOpenMedia: (Long) -> Unit, onOpenLibrary: (String?) -> Unit) {
                     )
                 }
             }
+            item {
+                AccessStatusBanner(
+                    user = user,
+                    onRenew = { showRenew = true },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
             if (error != null) {
                 item {
-                    Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
+                    val expired = c.isAccessExpiredDetail(error)
+                    if (expired) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(error!!, color = MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.height(8.dp))
+                            Button(onClick = { showRenew = true }) { Text("使用授权码续期") }
+                        }
+                    } else {
+                        Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
+                    }
                 }
             }
             item {

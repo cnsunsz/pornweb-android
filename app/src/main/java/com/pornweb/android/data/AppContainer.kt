@@ -28,6 +28,9 @@ class AppContainer(context: Context) {
     private val _unauthorized = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val unauthorized = _unauthorized.asSharedFlow()
 
+    private val _accessExpired = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val accessExpired = _accessExpired.asSharedFlow()
+
     private val baseUrlInterceptor = Interceptor { chain ->
         val orig = chain.request()
         val base = serverStore.normalizedBase().toHttpUrlOrNull()
@@ -59,6 +62,8 @@ class AppContainer(context: Context) {
                 tokenStore.clear()
                 _unauthorized.tryEmit(Unit)
             }
+        } else if (resp.code == 403 && isAccessExpiredBody(peekErrorBody(resp))) {
+            _accessExpired.tryEmit(Unit)
         }
         resp
     }
@@ -212,6 +217,65 @@ class AppContainer(context: Context) {
         return if (url.contains("token=")) url else "$url${sep}token=${Uri.encode(token)}"
     }
 
+    companion object {
+        const val ACCESS_EXPIRED_DETAIL = "授权已过期，请使用新的授权码续期"
+    }
+
+    fun normalizeInviteCode(raw: String): String =
+        raw.trim().replace("-", "").replace(" ", "")
+
+    fun isAccessExpiredDetail(detail: String?): Boolean {
+        val d = detail?.trim().orEmpty()
+        if (d.isEmpty()) return false
+        return d == ACCESS_EXPIRED_DETAIL || d.contains("授权已过期")
+    }
+
+    fun isAccessExpiredError(e: Throwable): Boolean {
+        if (e !is HttpException || e.code() != 403) return false
+        return isAccessExpiredDetail(parseError(e))
+    }
+
+    private fun peekErrorBody(resp: okhttp3.Response): String? {
+        return try {
+            resp.peekBody(4096).string()
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun isAccessExpiredBody(raw: String?): Boolean {
+        if (raw.isNullOrBlank()) return false
+        if (raw.contains(ACCESS_EXPIRED_DETAIL) || raw.contains("授权已过期")) return true
+        return try {
+            val body = gson.fromJson(raw, ApiErrorBody::class.java)
+            val d = body.detail
+            if (d != null && d.isJsonPrimitive) isAccessExpiredDetail(d.asString) else false
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    suspend fun refreshCurrentUser(): User? {
+        if (!tokenStore.hasToken()) return null
+        return try {
+            val u = api.me()
+            tokenStore.user = u
+            u
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    suspend fun activateAccess(inviteCode: String): ActivateResponse {
+        val resp = api.activate(ActivateRequest(inviteCode = normalizeInviteCode(inviteCode)))
+        resp.user?.let { tokenStore.user = it }
+        return resp
+    }
+
+    fun notifyAccessExpired() {
+        _accessExpired.tryEmit(Unit)
+    }
+
     fun parseError(e: Throwable): String {
         if (e is HttpException) {
             val raw = try {
@@ -226,7 +290,12 @@ class AppContainer(context: Context) {
                     if (d != null && !d.isJsonNull) {
                         if (d.isJsonPrimitive) {
                             val s = d.asString.trim()
-                            if (s.isNotEmpty()) return s
+                            if (s.isNotEmpty()) {
+                                if (e.code() == 403 && isAccessExpiredDetail(s)) {
+                                    _accessExpired.tryEmit(Unit)
+                                }
+                                return s
+                            }
                         }
                         if (d.isJsonArray && d.asJsonArray.size() > 0) {
                             val msgs = d.asJsonArray.mapNotNull { item ->

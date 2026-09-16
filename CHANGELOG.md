@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.28
+### 新增
+- 对齐网页 v2.1.17：到期状态（`access_active` 等）主页提示；登录后可用授权码续期（`/api/auth/activate`）
+
+
 ## v1.0.27
 ### 新增
 - 注册需填写授权码（`invite_code`），对齐网页 v2.1.16；错误展示服务端中文 detail
