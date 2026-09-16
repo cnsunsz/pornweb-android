@@ -1,9 +1,8 @@
 # Changelog
 
-## Unreleased
+## v1.0.32
 ### 新增
 - 「我的」普通用户可注销账户（`POST /api/auth/delete-account`，需密码确认；管理员不可自销）
-
 
 ## v1.0.31
 ### 改进
