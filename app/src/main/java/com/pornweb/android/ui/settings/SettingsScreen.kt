@@ -15,6 +15,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,9 +30,13 @@ import androidx.compose.ui.unit.dp
 import com.pornweb.android.BuildConfig
 import com.pornweb.android.PornWebApp
 import com.pornweb.android.data.PasswordChangeRequest
+import com.pornweb.android.data.User
 import com.pornweb.android.ui.components.AccessRenewDialog
 import com.pornweb.android.ui.components.AccessStatusBanner
 import com.pornweb.android.ui.theme.PwMuted
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
 
 @Composable
@@ -46,6 +51,10 @@ fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit, onPlayback
     var error by remember { mutableStateOf<String?>(null) }
     var showRenew by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        c.refreshCurrentUser()
+    }
 
     if (showRenew) {
         AccessRenewDialog(
@@ -68,18 +77,11 @@ fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit, onPlayback
         }
         Spacer(Modifier.height(12.dp))
         AccessStatusBanner(user = user, onRenew = { showRenew = true })
-        val accessLabel = when {
-            user?.isAdmin == true -> "管理员（永久）"
-            user?.accessActive == false -> "已过期"
-            user?.accessDaysLeft == null && user?.accessActive == true -> "永久授权"
-            user?.accessDaysLeft != null -> "剩余 ${user?.accessDaysLeft} 天"
-            else -> null
-        }
-        if (accessLabel != null) {
-            Text("访问权限：$accessLabel", color = PwMuted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
-        }
-        OutlinedButton(onClick = { showRenew = true }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            Text("授权码续期")
+        if (user != null) {
+            MembershipAuthBlock(user = user!!)
+            OutlinedButton(onClick = { showRenew = true }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                Text("授权码续期")
+            }
         }
         Spacer(Modifier.height(24.dp))
         Text("服务器", style = MaterialTheme.typography.titleMedium)
@@ -175,6 +177,71 @@ fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit, onPlayback
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(top = 4.dp)
         )
+    }
+}
+
+@Composable
+private fun MembershipAuthBlock(user: User) {
+    val status: String
+    val daysLeft: String
+    val expires: String
+
+    if (user.isAdmin == true) {
+        status = "永久"
+        daysLeft = "永久"
+        expires = "管理员 · 永久"
+    } else {
+        val left = user.accessDaysLeft
+        val expired = user.accessActive == false || left == 0
+        val permanent = !expired && left == null && user.accessExpiresAt.isNullOrBlank()
+        status = when {
+            expired -> "已过期"
+            permanent || (left == null && user.accessActive == true) -> "永久"
+            else -> "有效"
+        }
+        daysLeft = when {
+            expired -> "已到期"
+            permanent || left == null -> "永久"
+            else -> "${left} 天"
+        }
+        expires = when {
+            permanent || (user.isAdmin == true) -> "永久"
+            user.accessExpiresAt.isNullOrBlank() -> "—"
+            else -> formatAccessExpiresAt(user.accessExpiresAt)
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Text("会员授权", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(6.dp))
+        Text("状态：$status", color = PwMuted, style = MaterialTheme.typography.bodyMedium)
+        Text("剩余天数：$daysLeft", color = PwMuted, style = MaterialTheme.typography.bodyMedium)
+        Text("到期时间：$expires", color = PwMuted, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+/** ISO8601 → local `yyyy-MM-dd HH:mm` (Asia/Shanghai); fallback to substring. */
+private fun formatAccessExpiresAt(raw: String): String {
+    val trimmed = raw.trim()
+    if (trimmed.isEmpty()) return "—"
+    return try {
+        val instant = Instant.parse(trimmed)
+        val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+            .withZone(ZoneId.of("Asia/Shanghai"))
+        formatter.format(instant)
+    } catch (_: Exception) {
+        try {
+            // e.g. 2026-09-16T12:00:00+08:00 or without Z
+            val normalized = when {
+                trimmed.length >= 19 && (trimmed[10] == 'T' || trimmed[10] == ' ') ->
+                    trimmed.substring(0, 19).replace('T', ' ').take(16)
+                trimmed.length >= 16 -> trimmed.take(16).replace('T', ' ')
+                else -> trimmed
+            }
+            normalized
+        } catch (_: Exception) {
+            trimmed
+        }
     }
 }
 

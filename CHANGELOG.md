@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.30
+### 改进
+- 「我的」常显会员剩余天数与到期时间（`access_days_left` / `access_expires_at`），不限到期才提示
+
 ## v1.0.29
 ### 修复
 - CI：升级 setup-android@v4，不再安装已下架的 SDK `tools` 包（修复发版失败）
