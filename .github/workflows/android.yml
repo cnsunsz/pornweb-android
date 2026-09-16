@@ -31,7 +31,10 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          # Obsolete SDK package "tools" is gone; only need platform-tools here.
+          packages: platform-tools
 
       - name: Decode release keystore
         env:

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.29
+### 修复
+- CI：升级 setup-android@v4，不再安装已下架的 SDK `tools` 包（修复发版失败）
+
 ## v1.0.28
 ### 新增
 - 对齐网页 v2.1.17：到期状态（`access_active` 等）主页提示；登录后可用授权码续期（`/api/auth/activate`）
