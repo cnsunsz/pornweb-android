@@ -50,6 +50,7 @@ import kotlinx.coroutines.launch
 fun AccessStatusBanner(
     user: User?,
     onRenew: () -> Unit,
+    onUsdtRenew: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     if (user == null || user.isAdmin == true) return
@@ -83,8 +84,15 @@ fun AccessStatusBanner(
             Text(title, color = Color.White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
             Text(subtitle, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall)
         }
-        Button(onClick = onRenew) {
-            Text(if (expired) "续期" else "续期")
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Button(onClick = onRenew) {
+                Text(if (expired) "授权码续期" else "授权码续期")
+            }
+            if (onUsdtRenew != null) {
+                OutlinedButton(onClick = onUsdtRenew) {
+                    Text("USDT 续费")
+                }
+            }
         }
     }
 }
@@ -190,7 +198,8 @@ fun AccessRenewForm(
 @Composable
 fun AccessRenewDialog(
     onDismiss: () -> Unit,
-    onActivated: () -> Unit = {}
+    onActivated: () -> Unit = {},
+    onUsdtRenew: (() -> Unit)? = null
 ) {
     val app = LocalContext.current.applicationContext as PornWebApp
     val c = app.container
@@ -276,7 +285,18 @@ fun AccessRenewDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !busy) { Text("取消") }
+            Row {
+                if (onUsdtRenew != null) {
+                    TextButton(
+                        onClick = {
+                            onDismiss()
+                            onUsdtRenew()
+                        },
+                        enabled = !busy
+                    ) { Text("USDT 续费") }
+                }
+                TextButton(onClick = onDismiss, enabled = !busy) { Text("取消") }
+            }
         }
     )
 }
@@ -286,6 +306,7 @@ fun AccessRenewDialog(
 fun AccessExpiredErrorPanel(
     message: String,
     onRenew: () -> Unit,
+    onUsdtRenew: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -299,5 +320,8 @@ fun AccessExpiredErrorPanel(
             style = MaterialTheme.typography.bodyMedium
         )
         OutlinedButton(onClick = onRenew) { Text("使用授权码续期") }
+        if (onUsdtRenew != null) {
+            OutlinedButton(onClick = onUsdtRenew) { Text("USDT 续费") }
+        }
     }
 }

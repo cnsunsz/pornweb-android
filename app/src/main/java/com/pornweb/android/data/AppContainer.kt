@@ -23,7 +23,7 @@ class AppContainer(context: Context) {
     val serverStore = ServerStore(context)
     val tokenStore = TokenStore(context)
     val playerPrefs = PlayerPrefs(context)
-    val gson: Gson = GsonBuilder().serializeNulls().create()
+    val gson: Gson = GsonBuilder().create()
 
     private val _unauthorized = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val unauthorized = _unauthorized.asSharedFlow()
@@ -265,6 +265,16 @@ class AppContainer(context: Context) {
             null
         }
     }
+
+    suspend fun fetchPaymentPlans(): PaymentPlansResponse = api.paymentPlans()
+
+    suspend fun createPaymentOrder(planId: String): CreatePaymentOrderResponse =
+        api.createPaymentOrder(CreatePaymentOrderRequest(planId = planId))
+
+    suspend fun paymentOrderStatus(orderId: String): PaymentOrderStatusResponse =
+        api.paymentOrderStatus(orderId)
+
+    suspend fun myPayments(): MyPaymentsResponse = api.myPayments()
 
     suspend fun activateAccess(inviteCode: String): ActivateResponse {
         val resp = api.activate(ActivateRequest(inviteCode = normalizeInviteCode(inviteCode)))

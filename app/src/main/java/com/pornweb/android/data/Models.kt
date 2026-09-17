@@ -44,7 +44,8 @@ data class RegisterRequest(
     val username: String,
     val email: String,
     val password: String,
-    @SerializedName("invite_code") val inviteCode: String
+    /** Blank/null omitted by Gson (no serializeNulls). */
+    @SerializedName("invite_code") val inviteCode: String? = null
 )
 
 data class ActivateRequest(
@@ -249,4 +250,40 @@ data class SubtitleListResponse(
 /** GET /api/media/subtitles/{id}/{track_id}/status — status: ready|preparing|error|unavailable|idle */
 data class SubtitleStatusResponse(
     val status: String? = null
+)
+
+
+data class PaymentPlan(
+    val id: String? = null,
+    val days: Int? = null,
+    val amount: Double? = null
+)
+
+data class PaymentPlansResponse(
+    val plans: List<PaymentPlan>? = null,
+    val currency: String? = null
+)
+
+data class CreatePaymentOrderRequest(
+    @SerializedName("plan_id") val planId: String
+)
+
+data class CreatePaymentOrderResponse(
+    @SerializedName("order_id") val orderId: String? = null,
+    @SerializedName("pay_url") val payUrl: String? = null,
+    val days: Int? = null,
+    val amount: Double? = null
+)
+
+data class PaymentOrderStatusResponse(
+    val status: String? = null,
+    val days: Int? = null,
+    val amount: Double? = null,
+    @SerializedName("tx_id") val txId: String? = null,
+    @SerializedName("order_id") val orderId: String? = null
+)
+
+data class MyPaymentsResponse(
+    val orders: List<PaymentOrderStatusResponse>? = null,
+    val items: List<PaymentOrderStatusResponse>? = null
 )

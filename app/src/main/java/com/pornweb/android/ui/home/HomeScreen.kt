@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -51,6 +52,7 @@ import com.pornweb.android.data.MediaItem
 import com.pornweb.android.ui.components.BrandLogo
 import com.pornweb.android.ui.components.AccessRenewDialog
 import com.pornweb.android.ui.components.AccessStatusBanner
+import com.pornweb.android.ui.components.UsdtRenewDialog
 import com.pornweb.android.ui.components.PosterCard
 import com.pornweb.android.ui.components.PosterGridCard
 import com.pornweb.android.ui.theme.PwAccent
@@ -73,6 +75,7 @@ fun HomeScreen(onOpenMedia: (Long) -> Unit, onOpenLibrary: (String?) -> Unit) {
     var refreshing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var showRenew by remember { mutableStateOf(false) }
+    var showUsdtRenew by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -118,7 +121,15 @@ fun HomeScreen(onOpenMedia: (Long) -> Unit, onOpenLibrary: (String?) -> Unit) {
             onDismiss = { showRenew = false },
             onActivated = {
                 scope.launch { c.refreshCurrentUser() }
-            }
+            },
+            onUsdtRenew = { showUsdtRenew = true }
+        )
+    }
+
+    if (showUsdtRenew) {
+        UsdtRenewDialog(
+            onDismiss = { showUsdtRenew = false },
+            onPaid = { scope.launch { c.refreshCurrentUser() } }
         )
     }
 
@@ -157,6 +168,7 @@ fun HomeScreen(onOpenMedia: (Long) -> Unit, onOpenLibrary: (String?) -> Unit) {
                 AccessStatusBanner(
                     user = user,
                     onRenew = { showRenew = true },
+                    onUsdtRenew = { showUsdtRenew = true },
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
             }
@@ -168,6 +180,8 @@ fun HomeScreen(onOpenMedia: (Long) -> Unit, onOpenLibrary: (String?) -> Unit) {
                             Text(error!!, color = MaterialTheme.colorScheme.error)
                             Spacer(Modifier.height(8.dp))
                             Button(onClick = { showRenew = true }) { Text("使用授权码续期") }
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedButton(onClick = { showUsdtRenew = true }) { Text("USDT 续费") }
                         }
                     } else {
                         Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))

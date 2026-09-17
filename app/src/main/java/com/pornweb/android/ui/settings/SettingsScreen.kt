@@ -40,6 +40,8 @@ import com.pornweb.android.data.User
 import com.pornweb.android.ui.components.AccessRenewDialog
 import com.pornweb.android.ui.components.AccessRenewForm
 import com.pornweb.android.ui.components.AccessStatusBanner
+import com.pornweb.android.ui.components.UsdtRenewDialog
+import com.pornweb.android.ui.components.UsdtRenewSection
 import com.pornweb.android.ui.theme.PwMuted
 import java.time.Instant
 import java.time.ZoneId
@@ -57,6 +59,7 @@ fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit, onPlayback
     var message by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var showRenew by remember { mutableStateOf(false) }
+    var showUsdtRenew by remember { mutableStateOf(false) }
     var showDeleteAccount by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -67,7 +70,15 @@ fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit, onPlayback
     if (showRenew) {
         AccessRenewDialog(
             onDismiss = { showRenew = false },
-            onActivated = { scope.launch { c.refreshCurrentUser() } }
+            onActivated = { scope.launch { c.refreshCurrentUser() } },
+            onUsdtRenew = { showUsdtRenew = true }
+        )
+    }
+
+    if (showUsdtRenew) {
+        UsdtRenewDialog(
+            onDismiss = { showUsdtRenew = false },
+            onPaid = { scope.launch { c.refreshCurrentUser() } }
         )
     }
 
@@ -94,12 +105,19 @@ fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit, onPlayback
             Text(user?.email ?: "", color = PwMuted, style = MaterialTheme.typography.bodySmall)
         }
         Spacer(Modifier.height(12.dp))
-        AccessStatusBanner(user = user, onRenew = { showRenew = true })
+        AccessStatusBanner(
+            user = user,
+            onRenew = { showRenew = true },
+            onUsdtRenew = { showUsdtRenew = true }
+        )
         if (user != null) {
             MembershipAuthBlock(user = user!!)
             if (user?.isAdmin != true) {
                 AccessRenewForm(
                     onActivated = { scope.launch { c.refreshCurrentUser() } }
+                )
+                UsdtRenewSection(
+                    onPaid = { scope.launch { c.refreshCurrentUser() } }
                 )
             }
         }

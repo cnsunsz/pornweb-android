@@ -102,11 +102,7 @@ fun LoginScreen(
             error = "请输入邮箱"
             return
         }
-        val normalizedInvite = container.normalizeInviteCode(inviteCode)
-        if (registerMode && normalizedInvite.isBlank()) {
-            error = "请输入授权码"
-            return
-        }
+        val normalizedInvite = container.normalizeInviteCode(inviteCode).takeIf { it.isNotBlank() }
         if (password.length < 6 && registerMode) {
             error = "密码至少 6 位"
             return
@@ -216,7 +212,7 @@ fun LoginScreen(
                     OutlinedTextField(
                         value = inviteCode,
                         onValueChange = { inviteCode = it },
-                        label = { Text("授权码") },
+                        label = { Text("授权码（可选）") },
                         singleLine = true,
                         visualTransformation = if (inviteVisible) {
                             VisualTransformation.None
@@ -239,7 +235,7 @@ fun LoginScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Text(
-                        "由管理员发放；无连字符大小写均可",
+                        "无码可注册但需付费或填码解锁；有码按天数开通。无连字符大小写均可",
                         style = MaterialTheme.typography.bodySmall,
                         color = PwMuted,
                         modifier = Modifier

@@ -61,6 +61,7 @@ import com.pornweb.android.PornWebApp
 import com.pornweb.android.data.AppContainer
 import com.pornweb.android.ui.components.AccessExpiredErrorPanel
 import com.pornweb.android.ui.components.AccessRenewDialog
+import com.pornweb.android.ui.components.UsdtRenewDialog
 import com.pornweb.android.data.MediaItem
 import com.pornweb.android.ui.theme.PwMuted
 import com.pornweb.android.ui.theme.PwPlaceholder
@@ -82,6 +83,7 @@ fun DetailScreen(
     var loading by remember { mutableStateOf(true) }
     var snackMsg by remember { mutableStateOf<String?>(null) }
     var showRenew by remember { mutableStateOf(false) }
+    var showUsdtRenew by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -92,6 +94,29 @@ fun DetailScreen(
                 scope.launch {
                     c.refreshCurrentUser()
                     // reload detail after renew
+                    loading = true
+                    error = null
+                    try {
+                        val d = c.api.detail(id)
+                        item = d
+                        part = d.progressPart ?: 0
+                    } catch (e: Exception) {
+                        error = c.parseError(e)
+                    } finally {
+                        loading = false
+                    }
+                }
+            },
+            onUsdtRenew = { showUsdtRenew = true }
+        )
+    }
+
+    if (showUsdtRenew) {
+        UsdtRenewDialog(
+            onDismiss = { showUsdtRenew = false },
+            onPaid = {
+                scope.launch {
+                    c.refreshCurrentUser()
                     loading = true
                     error = null
                     try {
@@ -138,6 +163,7 @@ fun DetailScreen(
                     AccessExpiredErrorPanel(
                         message = error!!,
                         onRenew = { showRenew = true },
+                        onUsdtRenew = { showUsdtRenew = true },
                         modifier = Modifier.align(Alignment.Center)
                     )
                 } else {

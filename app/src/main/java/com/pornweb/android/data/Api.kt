@@ -82,6 +82,19 @@ interface ApiService {
         @Query("part") part: Int = 0
     ): SubtitleStatusResponse
 
+
+    @GET("api/payments/plans")
+    suspend fun paymentPlans(): PaymentPlansResponse
+
+    @POST("api/payments/order")
+    suspend fun createPaymentOrder(@Body body: CreatePaymentOrderRequest): CreatePaymentOrderResponse
+
+    @GET("api/payments/order/{order_id}")
+    suspend fun paymentOrderStatus(@Path("order_id") orderId: String): PaymentOrderStatusResponse
+
+    @GET("api/payments/my")
+    suspend fun myPayments(): MyPaymentsResponse
+
     @PUT("api/users/me/password")
     suspend fun changePassword(@Body body: PasswordChangeRequest): Response<Unit>
 }

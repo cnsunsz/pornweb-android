@@ -38,6 +38,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.pornweb.android.PornWebApp
 import com.pornweb.android.ui.components.AccessRenewDialog
+import com.pornweb.android.ui.components.UsdtRenewDialog
 import com.pornweb.android.ui.actors.ActorMediaScreen
 import com.pornweb.android.ui.actors.ActorsScreen
 import com.pornweb.android.ui.connect.ServerConnectScreen
@@ -84,6 +85,7 @@ fun PornWebRoot() {
     }
 
     var showAccessRenew by remember { mutableStateOf(false) }
+    var showUsdtRenew by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -115,7 +117,15 @@ fun PornWebRoot() {
     if (showAccessRenew) {
         AccessRenewDialog(
             onDismiss = { showAccessRenew = false },
-            onActivated = { scope.launch { c.refreshCurrentUser() } }
+            onActivated = { scope.launch { c.refreshCurrentUser() } },
+            onUsdtRenew = { showUsdtRenew = true }
+        )
+    }
+
+    if (showUsdtRenew) {
+        UsdtRenewDialog(
+            onDismiss = { showUsdtRenew = false },
+            onPaid = { scope.launch { c.refreshCurrentUser() } }
         )
     }
 
