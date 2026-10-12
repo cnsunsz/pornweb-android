@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.34
+### 改进
+- 默认服务器改为 `http://web.cnsz.kdns.fr:2052`（自动迁移旧默认 `web.cnsun.top:2052`）
+
 ## v1.0.33
 ### 新增
 - USDT(TRC20) 付费续期：套餐列表、下单打开支付页、订单轮询（`/api/payments/*`）

@@ -8,8 +8,9 @@ class ServerStore(context: Context) {
     var baseUrl: String
         get() {
             val raw = prefs.getString(KEY_URL, null)?.trim().orEmpty()
-            // One-shot migrate: old hardcoded default → new host
-            if (raw.isBlank() || raw == LEGACY_DEFAULT_URL || raw == "$LEGACY_DEFAULT_URL/") {
+            // One-shot migrate: previous shipped defaults → current host
+            val legacy = raw.trimEnd('/')
+            if (raw.isBlank() || legacy in LEGACY_DEFAULT_URLS) {
                 if (raw.isNotBlank()) {
                     prefs.edit().putString(KEY_URL, DEFAULT_URL).apply()
                 }
@@ -30,8 +31,11 @@ class ServerStore(context: Context) {
     fun normalizedBase(): String = normalize(baseUrl)
 
     companion object {
-        const val DEFAULT_URL = "http://web.cnsun.top:2052"
-        private const val LEGACY_DEFAULT_URL = "http://43.196.70.121:10086"
+        const val DEFAULT_URL = "http://web.cnsz.kdns.fr:2052"
+        private val LEGACY_DEFAULT_URLS = setOf(
+            "http://43.196.70.121:10086",
+            "http://web.cnsun.top:2052",
+        )
         private const val KEY_URL = "base_url"
         private const val KEY_CONNECTED = "connected"
 
