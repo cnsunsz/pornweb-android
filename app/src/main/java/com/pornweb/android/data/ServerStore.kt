@@ -31,10 +31,11 @@ class ServerStore(context: Context) {
     fun normalizedBase(): String = normalize(baseUrl)
 
     companion object {
-        const val DEFAULT_URL = "http://web.cnsz.kdns.fr:2052"
+        const val DEFAULT_URL = "http://web.cnsz.kdns.fr"
         private val LEGACY_DEFAULT_URLS = setOf(
             "http://43.196.70.121:10086",
             "http://web.cnsun.top:2052",
+            "http://web.cnsz.kdns.fr:2052",
         )
         private const val KEY_URL = "base_url"
         private const val KEY_CONNECTED = "connected"
