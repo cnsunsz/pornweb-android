@@ -268,8 +268,8 @@ class AppContainer(context: Context) {
 
     suspend fun fetchPaymentPlans(): PaymentPlansResponse = api.paymentPlans()
 
-    suspend fun createPaymentOrder(planId: String): CreatePaymentOrderResponse =
-        api.createPaymentOrder(CreatePaymentOrderRequest(planId = planId))
+    suspend fun createPaymentOrder(planId: String, method: String? = null): CreatePaymentOrderResponse =
+        api.createPaymentOrder(CreatePaymentOrderRequest(planId = planId, method = method))
 
     suspend fun paymentOrderStatus(orderId: String): PaymentOrderStatusResponse =
         api.paymentOrderStatus(orderId)

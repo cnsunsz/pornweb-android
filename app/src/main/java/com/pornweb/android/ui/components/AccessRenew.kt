@@ -90,7 +90,7 @@ fun AccessStatusBanner(
             }
             if (onUsdtRenew != null) {
                 OutlinedButton(onClick = onUsdtRenew) {
-                    Text("USDT 续费")
+                    Text("在线续费")
                 }
             }
         }
@@ -293,7 +293,7 @@ fun AccessRenewDialog(
                             onUsdtRenew()
                         },
                         enabled = !busy
-                    ) { Text("USDT 续费") }
+                    ) { Text("在线续费") }
                 }
                 TextButton(onClick = onDismiss, enabled = !busy) { Text("取消") }
             }
@@ -321,7 +321,7 @@ fun AccessExpiredErrorPanel(
         )
         OutlinedButton(onClick = onRenew) { Text("使用授权码续期") }
         if (onUsdtRenew != null) {
-            OutlinedButton(onClick = onUsdtRenew) { Text("USDT 续费") }
+            OutlinedButton(onClick = onUsdtRenew) { Text("在线续费") }
         }
     }
 }

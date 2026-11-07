@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -43,6 +44,30 @@ import kotlinx.coroutines.launch
 private const val POLL_INTERVAL_MS = 3_000L
 private const val POLL_TIMEOUT_MS = 5 * 60_000L
 
+private const val METHOD_USDT = "usdt"
+private const val METHOD_PAYPAL = "paypal"
+
+/** Normalize server methods; null/empty → usdt-only (old servers). */
+private fun normalizeMethods(raw: List<String>?): List<String> {
+    val cleaned = raw.orEmpty()
+        .map { it.trim().lowercase() }
+        .filter { it.isNotEmpty() }
+        .distinct()
+    return if (cleaned.isEmpty()) listOf(METHOD_USDT) else cleaned
+}
+
+private fun renewTitle(methods: List<String>): String =
+    if (METHOD_PAYPAL in methods) "在线续费" else "USDT 续费"
+
+private fun renewBlurb(methods: List<String>, selected: String): String = when {
+    METHOD_PAYPAL in methods && selected == METHOD_PAYPAL ->
+        "使用 PayPal 付费开通/续期。下单后将打开支付页，到账后自动刷新权限。"
+    METHOD_PAYPAL in methods ->
+        "可选 USDT(TRC20) 或 PayPal。下单后将打开支付页，到账后自动刷新权限。"
+    else ->
+        "使用 USDT(TRC20) 付费开通/续期。下单后将打开支付页，到账后自动刷新权限。"
+}
+
 @Composable
 fun UsdtRenewSection(
     onPaid: () -> Unit = {},
@@ -60,9 +85,10 @@ fun UsdtRenewDialog(
     onDismiss: () -> Unit,
     onPaid: () -> Unit = {}
 ) {
+    var title by remember { mutableStateOf("USDT 续费") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("USDT 续费") },
+        title = { Text(title) },
         text = {
             UsdtRenewContent(
                 onPaid = {
@@ -70,7 +96,8 @@ fun UsdtRenewDialog(
                     onDismiss()
                 },
                 showTitle = false,
-                scrollable = true
+                scrollable = true,
+                onTitleChange = { title = it }
             )
         },
         confirmButton = {
@@ -84,7 +111,8 @@ private fun UsdtRenewContent(
     onPaid: () -> Unit,
     modifier: Modifier = Modifier,
     showTitle: Boolean = true,
-    scrollable: Boolean = false
+    scrollable: Boolean = false,
+    onTitleChange: ((String) -> Unit)? = null
 ) {
     val app = LocalContext.current.applicationContext as PornWebApp
     val c = app.container
@@ -93,6 +121,8 @@ private fun UsdtRenewContent(
 
     var plans by remember { mutableStateOf<List<PaymentPlan>>(emptyList()) }
     var currency by remember { mutableStateOf("USDT") }
+    var methods by remember { mutableStateOf(listOf(METHOD_USDT)) }
+    var selectedMethod by remember { mutableStateOf(METHOD_USDT) }
     var loading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var orderingPlanId by remember { mutableStateOf<String?>(null) }
@@ -108,6 +138,15 @@ private fun UsdtRenewContent(
         onDispose { stopPolling() }
     }
 
+    fun applyMethods(raw: List<String>?) {
+        val m = normalizeMethods(raw)
+        methods = m
+        if (selectedMethod !in m) {
+            selectedMethod = m.first()
+        }
+        onTitleChange?.invoke(renewTitle(m))
+    }
+
     fun loadPlans() {
         scope.launch {
             loading = true
@@ -116,6 +155,7 @@ private fun UsdtRenewContent(
                 val resp = c.fetchPaymentPlans()
                 plans = resp.plans.orEmpty()
                 currency = resp.currency?.takeIf { it.isNotBlank() } ?: "USDT"
+                applyMethods(resp.methods)
                 if (plans.isEmpty()) {
                     loadError = "暂无可用套餐"
                 }
@@ -129,7 +169,7 @@ private fun UsdtRenewContent(
 
     LaunchedEffect(Unit) { loadPlans() }
 
-    fun startPolling(orderId: String) {
+    fun startPolling(orderId: String, method: String) {
         stopPolling()
         statusText = "等待支付确认中…"
         val started = System.currentTimeMillis()
@@ -146,7 +186,8 @@ private fun UsdtRenewContent(
                     when (status) {
                         "paid" -> {
                             statusText = "支付成功"
-                            Toast.makeText(context, "USDT 续费成功", Toast.LENGTH_SHORT).show()
+                            val toast = if (method == METHOD_PAYPAL) "PayPal 续费成功" else "USDT 续费成功"
+                            Toast.makeText(context, toast, Toast.LENGTH_SHORT).show()
                             c.refreshCurrentUser()
                             orderingPlanId = null
                             onPaid()
@@ -169,7 +210,7 @@ private fun UsdtRenewContent(
         }
     }
 
-    fun createOrder(plan: PaymentPlan) {
+    fun createOrder(plan: PaymentPlan, method: String) {
         val planId = plan.id?.trim().orEmpty()
         if (planId.isEmpty()) {
             statusText = "套餐无效"
@@ -179,7 +220,7 @@ private fun UsdtRenewContent(
             orderingPlanId = planId
             statusText = "正在创建订单…"
             try {
-                val resp = c.createPaymentOrder(planId)
+                val resp = c.createPaymentOrder(planId, method = method)
                 val orderId = resp.orderId?.trim().orEmpty()
                 val payUrl = resp.payUrl?.trim().orEmpty()
                 if (orderId.isEmpty() || payUrl.isEmpty()) {
@@ -198,8 +239,12 @@ private fun UsdtRenewContent(
                     orderingPlanId = null
                     return@launch
                 }
-                statusText = "已打开支付页，等待链上确认…"
-                startPolling(orderId)
+                statusText = if (method == METHOD_PAYPAL) {
+                    "已打开支付页，等待 PayPal 确认…"
+                } else {
+                    "已打开支付页，等待链上确认…"
+                }
+                startPolling(orderId, method)
             } catch (e: Exception) {
                 statusText = c.parseError(e)
                 orderingPlanId = null
@@ -212,18 +257,47 @@ private fun UsdtRenewContent(
     } else {
         modifier.fillMaxWidth()
     }
+    val showMethodPicker = methods.size > 1
+    val title = renewTitle(methods)
 
     Column(modifier = baseModifier) {
         if (showTitle) {
-            Text("USDT 续费", style = MaterialTheme.typography.titleMedium)
+            Text(title, style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(6.dp))
         }
         Text(
-            "使用 USDT(TRC20) 付费开通/续期。下单后将打开支付页，到账后自动刷新权限。",
+            renewBlurb(methods, selectedMethod),
             color = PwMuted,
             style = MaterialTheme.typography.bodySmall
         )
         Spacer(Modifier.height(8.dp))
+
+        if (showMethodPicker && !loading) {
+            Text("支付方式", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(4.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (METHOD_USDT in methods) {
+                    FilterChip(
+                        selected = selectedMethod == METHOD_USDT,
+                        onClick = { selectedMethod = METHOD_USDT },
+                        label = { Text("USDT") },
+                        enabled = orderingPlanId == null
+                    )
+                }
+                if (METHOD_PAYPAL in methods) {
+                    FilterChip(
+                        selected = selectedMethod == METHOD_PAYPAL,
+                        onClick = { selectedMethod = METHOD_PAYPAL },
+                        label = { Text("PayPal") },
+                        enabled = orderingPlanId == null
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
 
         when {
             loading -> {
@@ -247,16 +321,27 @@ private fun UsdtRenewContent(
                 }
             }
             else -> {
+                val amountCurrency = if (selectedMethod == METHOD_PAYPAL && currency.equals("USDT", true)) {
+                    // Server may still report USDT currency for plans; PayPal checkout uses its own currency.
+                    currency
+                } else {
+                    currency
+                }
                 plans.forEach { plan ->
                     val planId = plan.id.orEmpty()
                     val days = plan.days ?: 0
                     val amount = plan.amount
                     val amountLabel = formatAmount(amount)
-                    val label = "$planId · ${days}天 · $amountLabel $currency"
+                    val methodTag = if (showMethodPicker) {
+                        if (selectedMethod == METHOD_PAYPAL) " · PayPal" else " · USDT"
+                    } else {
+                        ""
+                    }
+                    val label = "$planId · ${days}天 · $amountLabel $amountCurrency$methodTag"
                     val busy = orderingPlanId != null
                     Spacer(Modifier.height(6.dp))
                     Button(
-                        onClick = { createOrder(plan) },
+                        onClick = { createOrder(plan, selectedMethod) },
                         enabled = !busy && planId.isNotBlank(),
                         modifier = Modifier.fillMaxWidth()
                     ) {

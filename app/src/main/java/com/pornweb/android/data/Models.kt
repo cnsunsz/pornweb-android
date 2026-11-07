@@ -261,11 +261,15 @@ data class PaymentPlan(
 
 data class PaymentPlansResponse(
     val plans: List<PaymentPlan>? = null,
-    val currency: String? = null
+    val currency: String? = null,
+    /** Available pay methods, e.g. ["usdt","paypal"]. Null/empty on older servers → treat as usdt-only. */
+    val methods: List<String>? = null
 )
 
 data class CreatePaymentOrderRequest(
-    @SerializedName("plan_id") val planId: String
+    @SerializedName("plan_id") val planId: String,
+    /** "usdt" | "paypal"; omit/null defaults to usdt on server. */
+    val method: String? = null
 )
 
 data class CreatePaymentOrderResponse(

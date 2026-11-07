@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.0.36
+### 新增
+- 在线续费支持 PayPal（与 USDT 并列）：`GET /api/payments/plans` 的 `methods`；下单可带 `method=paypal`，查单轮询不变
+### 改进
+- 有 PayPal 时续费入口/标题显示「在线续费」并可选支付方式；仅 USDT（或旧服无 methods）时行为与原先一致
+
+
 ## v1.0.35
 ### 改进
 - 默认服务器改为 `http://web.cnsz.kdns.fr`（80，不再使用 `:2052`）；自动迁移旧默认含 `*:2052`

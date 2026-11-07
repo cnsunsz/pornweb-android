@@ -181,7 +181,7 @@ fun HomeScreen(onOpenMedia: (Long) -> Unit, onOpenLibrary: (String?) -> Unit) {
                             Spacer(Modifier.height(8.dp))
                             Button(onClick = { showRenew = true }) { Text("使用授权码续期") }
                             Spacer(Modifier.height(8.dp))
-                            OutlinedButton(onClick = { showUsdtRenew = true }) { Text("USDT 续费") }
+                            OutlinedButton(onClick = { showUsdtRenew = true }) { Text("在线续费") }
                         }
                     } else {
                         Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
