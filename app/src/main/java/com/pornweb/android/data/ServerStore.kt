@@ -8,18 +8,16 @@ class ServerStore(context: Context) {
     var baseUrl: String
         get() {
             val raw = prefs.getString(KEY_URL, null)?.trim().orEmpty()
-            // One-shot migrate: previous shipped defaults → current host
             val legacy = raw.trimEnd('/')
-            if (raw.isBlank() || legacy in LEGACY_DEFAULT_URLS) {
-                if (raw.isNotBlank()) {
-                    prefs.edit().putString(KEY_URL, DEFAULT_URL).apply()
-                }
-                return DEFAULT_URL
+            // Lock to DEFAULT_URL; rewrite blank / legacy / any custom stored URL.
+            if (raw.isNotBlank() && legacy != DEFAULT_URL) {
+                prefs.edit().putString(KEY_URL, DEFAULT_URL).apply()
             }
-            return raw
+            return DEFAULT_URL
         }
-        set(value) {
-            prefs.edit().putString(KEY_URL, normalize(value)).apply()
+        set(@Suppress("UNUSED_PARAMETER") value) {
+            // Server address is fixed; ignore edits and persist DEFAULT_URL only.
+            prefs.edit().putString(KEY_URL, DEFAULT_URL).apply()
         }
 
     var connected: Boolean
@@ -31,11 +29,14 @@ class ServerStore(context: Context) {
     fun normalizedBase(): String = normalize(baseUrl)
 
     companion object {
-        const val DEFAULT_URL = "http://web.cnsz.kdns.fr"
+        const val DEFAULT_URL = "https://web.cnsz.kdns.fr"
+        /** Previous shipped defaults rewritten to [DEFAULT_URL] on read. */
         private val LEGACY_DEFAULT_URLS = setOf(
             "http://43.196.70.121:10086",
             "http://web.cnsun.top:2052",
+            "http://web.cnsz.kdns.fr",
             "http://web.cnsz.kdns.fr:2052",
+            "https://web.cnsz.kdns.fr:2052",
         )
         private const val KEY_URL = "base_url"
         private const val KEY_CONNECTED = "connected"
@@ -44,9 +45,11 @@ class ServerStore(context: Context) {
             var u = raw.trim()
             if (u.isEmpty()) u = DEFAULT_URL
             if (!u.startsWith("http://") && !u.startsWith("https://")) {
-                u = "http://$u"
+                u = "https://$u"
             }
-            return u.trimEnd('/')
+            val trimmed = u.trimEnd('/')
+            if (trimmed in LEGACY_DEFAULT_URLS) return DEFAULT_URL
+            return trimmed
         }
     }
 }

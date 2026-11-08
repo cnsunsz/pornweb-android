@@ -267,7 +267,7 @@ fun LoginScreen(
                         Text(if (registerMode) "去登录" else "注册")
                     }
                 }
-                TextButton(onClick = onChangeServer) { Text("更换服务器") }
+                TextButton(onClick = onChangeServer) { Text("重新连接") }
                 if (error != null) {
                     Text(
                         error!!,

@@ -13,8 +13,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -29,13 +27,13 @@ import androidx.compose.ui.unit.dp
 import com.pornweb.android.PornWebApp
 import com.pornweb.android.data.ServerStore
 import com.pornweb.android.ui.components.BrandLogo
+import com.pornweb.android.ui.theme.PwMuted
 import kotlinx.coroutines.launch
 
 @Composable
 fun ServerConnectScreen(onConnected: () -> Unit) {
     val app = LocalContext.current.applicationContext as PornWebApp
     val container = app.container
-    var url by remember { mutableStateOf(container.serverStore.baseUrl.ifBlank { ServerStore.DEFAULT_URL }) }
     var message by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -45,7 +43,7 @@ fun ServerConnectScreen(onConnected: () -> Unit) {
             busy = true
             message = null
             try {
-                container.serverStore.baseUrl = url
+                container.serverStore.baseUrl = ServerStore.DEFAULT_URL
                 val health = container.api.health()
                 val ok = health.status.equals("ok", true) || !health.app.isNullOrBlank()
                 if (ok) {
@@ -75,25 +73,16 @@ fun ServerConnectScreen(onConnected: () -> Unit) {
     ) {
         BrandLogo(size = 36.dp, breathe = false)
         Text("连接媒体服务器", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp))
-        Spacer(Modifier.height(28.dp))
-        OutlinedTextField(
-            value = url,
-            onValueChange = { url = it },
-            label = { Text("服务器地址") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text(ServerStore.DEFAULT_URL) }
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "服务器：web.cnsz.kdns.fr",
+            color = PwMuted,
+            style = MaterialTheme.typography.bodySmall
         )
-        Spacer(Modifier.height(16.dp))
-        OutlinedButton(
-            onClick = { run(false) },
-            enabled = !busy && url.isNotBlank(),
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("测试连接") }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(28.dp))
         Button(
             onClick = { run(true) },
-            enabled = !busy && url.isNotBlank(),
+            enabled = !busy,
             modifier = Modifier.fillMaxWidth()
         ) {
             if (busy) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)

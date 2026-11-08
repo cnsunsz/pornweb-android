@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.37
+### 改进
+- 锁死服务器为 `https://web.cnsz.kdns.fr`，移除地址编辑（设置/连接页只读显示）
+- 自动迁移旧默认含 `http://web.cnsz.kdns.fr` 与 `*:2052` 到当前 https 默认
+
 ## v1.0.36
 ### 新增
 - 在线续费支持 PayPal（与 USDT 并列）：`GET /api/payments/plans` 的 `methods`；下单可带 `method=paypal`，查单轮询不变

@@ -53,7 +53,6 @@ fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit, onPlayback
     val app = LocalContext.current.applicationContext as PornWebApp
     val c = app.container
     val user by c.tokenStore.userFlow.collectAsState()
-    var server by remember { mutableStateOf(c.serverStore.baseUrl) }
     var oldPw by remember { mutableStateOf("") }
     var newPw by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
@@ -124,22 +123,11 @@ fun SettingsScreen(onLoggedOut: () -> Unit, onEditServer: () -> Unit, onPlayback
         Spacer(Modifier.height(24.dp))
         Text("服务器", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = server,
-            onValueChange = { server = it },
-            label = { Text("服务器地址") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
+        Text(
+            "服务器：web.cnsz.kdns.fr",
+            color = PwMuted,
+            style = MaterialTheme.typography.bodyMedium
         )
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(
-            onClick = {
-                c.serverStore.baseUrl = server
-                message = "已保存服务器地址"
-                error = null
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("保存地址") }
         TextButtonLike(onEditServer)
         Spacer(Modifier.height(16.dp))
         OutlinedButton(onClick = onPlaybackSettings, modifier = Modifier.fillMaxWidth()) {
